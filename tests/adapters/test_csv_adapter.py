@@ -146,3 +146,46 @@ class TestCSVAdapter:
 
         with pytest.raises(CollectionError, match="max_bytes"):
             await adapter.collect()
+
+    @pytest.mark.asyncio
+    async def test_collect_with_invalid_read_options_logs_warning(
+        self, sample_csv_config, caplog
+    ):
+        """Ensure non-mapping read_options emit a warning and fall back."""
+
+        config = {**sample_csv_config}
+        config["read_options"] = ["not", "a", "mapping"]
+
+        adapter = CSVAdapter(config)
+        with caplog.at_level("WARNING", logger="scry_ingestor.utils.file_readers"):
+            raw_data = await adapter.collect()
+
+        assert isinstance(raw_data, pd.DataFrame)
+        assert any("not a mapping" in message for message in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_collect_with_invalid_read_option_values_warns(
+        self, sample_csv_config, caplog
+    ):
+        """Invalid option values should trigger warnings and default handling."""
+
+        config = {**sample_csv_config}
+        config["read_options"] = {
+            "chunk_size": -128,
+            "encoding": 123,
+            "errors": 42,
+            "max_bytes": "ten",
+            "unexpected": True,
+        }
+
+        adapter = CSVAdapter(config)
+        with caplog.at_level("WARNING", logger="scry_ingestor.utils.file_readers"):
+            raw_data = await adapter.collect()
+
+        assert isinstance(raw_data, pd.DataFrame)
+        messages = " ".join(caplog.messages)
+        assert "must be greater than zero" in messages
+        assert "Invalid encoding value" in messages
+        assert "Invalid errors mode" in messages
+        assert "Invalid max_bytes value" in messages
+        assert "Ignoring unsupported" in messages

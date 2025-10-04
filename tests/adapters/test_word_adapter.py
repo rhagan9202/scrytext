@@ -297,3 +297,42 @@ class TestWordAdapter:
 
         with pytest.raises(CollectionError, match="max_bytes"):
             await adapter.collect()
+
+    @pytest.mark.asyncio
+    async def test_collect_with_invalid_read_options_logs_warning(
+        self, sample_word_config, caplog
+    ):
+        """Ensure non-mapping read_options emit a warning for Word files."""
+
+        config = {**sample_word_config}
+        config["read_options"] = "invalid"
+
+        adapter = WordAdapter(config)
+        with caplog.at_level("WARNING", logger="scry_ingestor.utils.file_readers"):
+            raw_data = await adapter.collect()
+
+        assert raw_data is not None
+        assert any("not a mapping" in message for message in caplog.messages)
+
+    @pytest.mark.asyncio
+    async def test_collect_with_invalid_binary_read_option_values_warns(
+        self, sample_word_config, caplog
+    ):
+        """Invalid binary options should trigger fallback warnings."""
+
+        config = {**sample_word_config}
+        config["read_options"] = {
+            "chunk_size": 0,
+            "max_bytes": "none",
+            "unexpected": 99,
+        }
+
+        adapter = WordAdapter(config)
+        with caplog.at_level("WARNING", logger="scry_ingestor.utils.file_readers"):
+            raw_data = await adapter.collect()
+
+        assert raw_data is not None
+        messages = " ".join(caplog.messages)
+        assert "must be greater than zero" in messages
+        assert "Invalid max_bytes value" in messages
+        assert "Ignoring unsupported" in messages

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -10,26 +11,49 @@ from ..exceptions import CollectionError
 
 DEFAULT_CHUNK_SIZE = 1024 * 1024  # 1MB
 
+logger = logging.getLogger(__name__)
 
-def _ensure_mapping(options: Mapping[str, Any] | None, context: str) -> Mapping[str, Any]:
+
+def _ensure_mapping(options: Mapping[str, Any] | None, context: str) -> dict[str, Any]:
     """Validate that options is a mapping object."""
 
     if options is None:
         return {}
     if isinstance(options, Mapping):
-        return options
-    raise CollectionError(f"{context} must be a mapping of option names to values")
+        return dict(options)
+
+    logger.warning(
+        "%s provided as %s is not a mapping (%s); falling back to defaults.",
+        options,
+        context,
+        type(options).__name__,
+    )
+    return {}
 
 
-def _normalize_chunk_size(value: Any, context: str) -> int:
-    """Return a positive integer chunk size."""
+def _normalize_chunk_size(value: Any, *, default: int, context: str) -> int:
+    """Return a positive integer chunk size, falling back to default when invalid."""
+
+    if value is None:
+        return default
 
     try:
         chunk_size = int(value)
-    except (TypeError, ValueError) as exc:
-        raise CollectionError(f"{context} must be an integer value") from exc
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid %s value '%s'; using default %d bytes.", context, value, default
+        )
+        return default
+
     if chunk_size <= 0:
-        raise CollectionError(f"{context} must be greater than zero")
+        logger.warning(
+            "%s must be greater than zero (received %s); using default %d bytes.",
+            context,
+            value,
+            default,
+        )
+        return default
+
     return chunk_size
 
 
@@ -38,13 +62,34 @@ def _normalize_max_bytes(value: Any | None) -> int | None:
 
     if value is None:
         return None
+
     try:
         max_bytes = int(value)
-    except (TypeError, ValueError) as exc:
-        raise CollectionError("max_bytes must be an integer value") from exc
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid max_bytes value '%s'; disabling size limit and using defaults.",
+            value,
+        )
+        return None
+
     if max_bytes <= 0:
-        raise CollectionError("max_bytes must be greater than zero")
+        logger.warning(
+            "max_bytes must be greater than zero (received %s); disabling size limit.",
+            value,
+        )
+        return None
+
     return max_bytes
+
+
+def _check_unexpected_keys(resolved: dict[str, Any], allowed: set[str], context: str) -> None:
+    """Emit a warning when unsupported keys are present in configuration."""
+
+    unexpected = sorted(set(resolved) - allowed)
+    if unexpected:
+        logger.warning(
+            "Ignoring unsupported %s keys: %s", context, ", ".join(unexpected)
+        )
 
 
 def resolve_text_read_options(
@@ -53,11 +98,43 @@ def resolve_text_read_options(
     """Parse text-mode read options returning chunk config and decoding choices."""
 
     resolved = _ensure_mapping(options, "read_options")
+    _check_unexpected_keys(
+        resolved,
+        {"chunk_size", "max_bytes", "encoding", "errors"},
+        "read_options",
+    )
 
-    chunk_size = _normalize_chunk_size(resolved.get("chunk_size", DEFAULT_CHUNK_SIZE), "chunk_size")
+    chunk_size = _normalize_chunk_size(
+        resolved.get("chunk_size"), default=DEFAULT_CHUNK_SIZE, context="chunk_size"
+    )
     max_bytes = _normalize_max_bytes(resolved.get("max_bytes"))
-    encoding = str(resolved.get("encoding", "utf-8"))
-    errors = str(resolved.get("errors", "strict"))
+    if max_bytes is not None and max_bytes < chunk_size:
+        logger.warning(
+            "max_bytes (%d) is smaller than chunk_size (%d); reducing chunk_size to match limit.",
+            max_bytes,
+            chunk_size,
+        )
+        chunk_size = max_bytes
+
+    raw_encoding = resolved.get("encoding")
+    if isinstance(raw_encoding, str) and raw_encoding.strip():
+        encoding = raw_encoding.strip()
+    else:
+        if raw_encoding is not None:
+            logger.warning(
+                "Invalid encoding value '%s'; falling back to 'utf-8'.", raw_encoding
+            )
+        encoding = "utf-8"
+
+    raw_errors = resolved.get("errors")
+    if isinstance(raw_errors, str) and raw_errors.strip():
+        errors = raw_errors.strip()
+    else:
+        if raw_errors is not None:
+            logger.warning(
+                "Invalid errors mode '%s'; falling back to 'strict'.", raw_errors
+            )
+        errors = "strict"
 
     return chunk_size, max_bytes, encoding, errors
 
@@ -66,8 +143,19 @@ def resolve_binary_read_options(options: Mapping[str, Any] | None) -> tuple[int,
     """Parse binary-mode read options returning chunk configuration."""
 
     resolved = _ensure_mapping(options, "read_options")
-    chunk_size = _normalize_chunk_size(resolved.get("chunk_size", DEFAULT_CHUNK_SIZE), "chunk_size")
+    _check_unexpected_keys(resolved, {"chunk_size", "max_bytes"}, "read_options")
+
+    chunk_size = _normalize_chunk_size(
+        resolved.get("chunk_size"), default=DEFAULT_CHUNK_SIZE, context="chunk_size"
+    )
     max_bytes = _normalize_max_bytes(resolved.get("max_bytes"))
+    if max_bytes is not None and max_bytes < chunk_size:
+        logger.warning(
+            "max_bytes (%d) is smaller than chunk_size (%d); reducing chunk_size to match limit.",
+            max_bytes,
+            chunk_size,
+        )
+        chunk_size = max_bytes
     return chunk_size, max_bytes
 
 
@@ -96,10 +184,23 @@ def read_text_file(
 
     try:
         return buffer.decode(encoding, errors=errors)
-    except LookupError as exc:
-        raise CollectionError(f"Unknown encoding requested: {encoding}") from exc
-    except UnicodeDecodeError as exc:
-        raise CollectionError("Failed to decode file with provided encoding") from exc
+    except LookupError:
+        logger.warning(
+            "Unknown encoding '%s'; retrying with UTF-8.", encoding
+        )
+        try:
+            return buffer.decode("utf-8", errors="strict")
+        except UnicodeDecodeError as exc:  # pragma: no cover - defensive
+            raise CollectionError("Failed to decode file with UTF-8 fallback") from exc
+    except UnicodeDecodeError:
+        logger.warning(
+            "Decoding failed using encoding '%s'; retrying with UTF-8 (errors='replace').",
+            encoding,
+        )
+        try:
+            return buffer.decode("utf-8", errors="replace")
+        except UnicodeDecodeError as exc:  # pragma: no cover - defensive
+            raise CollectionError("Failed to decode file with UTF-8 fallback") from exc
 
 
 def read_binary_file(
