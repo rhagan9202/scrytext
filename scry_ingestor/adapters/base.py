@@ -1,12 +1,16 @@
 """Base adapter abstract class for all data source adapters."""
 
-from abc import ABC, abstractmethod
 import asyncio
+import logging
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any, TypeVar
 
 from ..schemas.payload import IngestionMetadata, IngestionPayload, ValidationResult
+
+
+logger = logging.getLogger(__name__)
 
 
 T = TypeVar("T")
@@ -59,6 +63,10 @@ class BaseAdapter(ABC):
         """
         pass
 
+    async def cleanup(self, raw_data: Any) -> None:
+        """Release any resources acquired during collection/processing."""
+        return None
+
     @abstractmethod
     async def validate(self, raw_data: Any) -> ValidationResult:
         """
@@ -94,26 +102,35 @@ class BaseAdapter(ABC):
         """
         start_time = datetime.now(timezone.utc)
 
-        # Collect raw data
-        raw_data = await self.collect()
+        raw_data: Any | None = None
+        try:
+            # Collect raw data
+            raw_data = await self.collect()
 
-        # Validate data
-        validation = await self.validate(raw_data)
+            # Validate data
+            validation = await self.validate(raw_data)
 
-        # Transform data
-        transformed_data = await self.transform(raw_data)
+            # Transform data
+            transformed_data = await self.transform(raw_data)
 
-        # Build metadata as IngestionMetadata object
-        end_time = datetime.now(timezone.utc)
-        duration_ms = int((end_time - start_time).total_seconds() * 1000)
+            # Build metadata as IngestionMetadata object
+            end_time = datetime.now(timezone.utc)
+            duration_ms = int((end_time - start_time).total_seconds() * 1000)
 
-        metadata = IngestionMetadata(
-            source_id=self.source_id,
-            adapter_type=self.__class__.__name__,
-            timestamp=start_time.isoformat(),
-            processing_duration_ms=duration_ms,
-            processing_mode="cloud" if self.use_cloud_processing else "local",
-            correlation_id=self.config.get("correlation_id"),
-        )
+            metadata = IngestionMetadata(
+                source_id=self.source_id,
+                adapter_type=self.__class__.__name__,
+                timestamp=start_time.isoformat(),
+                processing_duration_ms=duration_ms,
+                processing_mode="cloud" if self.use_cloud_processing else "local",
+                correlation_id=self.config.get("correlation_id"),
+            )
 
-        return IngestionPayload(data=transformed_data, metadata=metadata, validation=validation)
+            return IngestionPayload(data=transformed_data, metadata=metadata, validation=validation)
+
+        finally:
+            if raw_data is not None:
+                try:
+                    await self.cleanup(raw_data)
+                except Exception as cleanup_error:  # pragma: no cover - best effort cleanup
+                    logger.debug("Adapter cleanup failed: %s", cleanup_error, exc_info=True)

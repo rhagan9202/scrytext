@@ -359,11 +359,20 @@ class PDFAdapter(BaseAdapter):
                 [p["text"] for p in result["pages"] if p["text"]]
             )
 
-        # Clean up
-        try:
-            pdfplumber_doc.close()
-            pymupdf_doc.close()
-        except Exception:
-            pass
-
         return result
+
+    async def cleanup(self, raw_data: dict[str, Any]) -> None:
+        """Close any open PDF document handles once processing completes."""
+
+        await self._run_in_thread(self._cleanup_sync, raw_data)
+
+    def _cleanup_sync(self, raw_data: dict[str, Any]) -> None:
+        """Synchronously close PDF handles, ignoring secondary errors."""
+
+        for key in ("pdfplumber_doc", "pymupdf_doc"):
+            doc = raw_data.get(key)
+            if doc and hasattr(doc, "close"):
+                try:
+                    doc.close()
+                except Exception:
+                    continue

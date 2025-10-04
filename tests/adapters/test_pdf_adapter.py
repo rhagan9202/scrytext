@@ -1,9 +1,22 @@
 """Tests for PDFAdapter using live test data."""
 
+from contextlib import asynccontextmanager
+
 import pytest
 
 from scry_ingestor.adapters.pdf_adapter import PDFAdapter
 from scry_ingestor.exceptions import CollectionError
+
+
+@asynccontextmanager
+async def manage_pdf_resources(adapter: PDFAdapter):
+    """Collect PDF resources for a test and ensure cleanup afterwards."""
+
+    raw_data = await adapter.collect()
+    try:
+        yield raw_data
+    finally:
+        await adapter.cleanup(raw_data)
 
 
 @pytest.fixture
@@ -67,19 +80,18 @@ class TestPDFAdapter:
     async def test_collect_from_file(self, sample_pdf_config):
         """Test collecting data from PDF document using live test data."""
         adapter = PDFAdapter(sample_pdf_config)
-        raw_data = await adapter.collect()
+        async with manage_pdf_resources(adapter) as raw_data:
+            # Check that both document objects were loaded
+            assert raw_data is not None
+            assert isinstance(raw_data, dict)
+            assert "pdfplumber_doc" in raw_data
+            assert "pymupdf_doc" in raw_data
+            assert "path" in raw_data
 
-        # Check that both document objects were loaded
-        assert raw_data is not None
-        assert isinstance(raw_data, dict)
-        assert "pdfplumber_doc" in raw_data
-        assert "pymupdf_doc" in raw_data
-        assert "path" in raw_data
-
-        # Verify documents are valid
-        assert raw_data["pdfplumber_doc"] is not None
-        assert raw_data["pymupdf_doc"] is not None
-        assert len(raw_data["pdfplumber_doc"].pages) > 0
+            # Verify documents are valid
+            assert raw_data["pdfplumber_doc"] is not None
+            assert raw_data["pymupdf_doc"] is not None
+            assert len(raw_data["pdfplumber_doc"].pages) > 0
 
     @pytest.mark.asyncio
     async def test_collect_missing_file(self):
@@ -111,30 +123,30 @@ class TestPDFAdapter:
     async def test_validate_valid_document(self, sample_pdf_config):
         """Test validation of valid PDF document."""
         adapter = PDFAdapter(sample_pdf_config)
-        raw_data = await adapter.collect()
-        validation = await adapter.validate(raw_data)
+        async with manage_pdf_resources(adapter) as raw_data:
+            validation = await adapter.validate(raw_data)
 
-        assert validation.is_valid is True
-        assert len(validation.errors) == 0
-        assert "page_count" in validation.metrics
-        assert validation.metrics["page_count"] == 3  # Our test PDF has 3 pages
-        assert "total_words" in validation.metrics
-        assert validation.metrics["total_words"] > 0
-        assert "total_text_chars" in validation.metrics
-        assert "table_count" in validation.metrics
-        assert "has_metadata" in validation.metrics
+            assert validation.is_valid is True
+            assert len(validation.errors) == 0
+            assert "page_count" in validation.metrics
+            assert validation.metrics["page_count"] == 3  # Our test PDF has 3 pages
+            assert "total_words" in validation.metrics
+            assert validation.metrics["total_words"] > 0
+            assert "total_text_chars" in validation.metrics
+            assert "table_count" in validation.metrics
+            assert "has_metadata" in validation.metrics
 
     @pytest.mark.asyncio
     async def test_validate_with_min_requirements(self, pdf_config_with_validation):
         """Test validation with minimum requirements."""
         adapter = PDFAdapter(pdf_config_with_validation)
-        raw_data = await adapter.collect()
-        validation = await adapter.validate(raw_data)
+        async with manage_pdf_resources(adapter) as raw_data:
+            validation = await adapter.validate(raw_data)
 
-        # Should pass because sample document has enough content
-        assert validation.is_valid is True
-        assert validation.metrics["page_count"] >= 2
-        assert validation.metrics["total_words"] >= 10
+            # Should pass because sample document has enough content
+            assert validation.is_valid is True
+            assert validation.metrics["page_count"] >= 2
+            assert validation.metrics["total_words"] >= 10
 
     @pytest.mark.asyncio
     async def test_validate_insufficient_pages(self):
@@ -148,18 +160,19 @@ class TestPDFAdapter:
             },
         }
         adapter = PDFAdapter(config)
-        raw_data = await adapter.collect()
-        validation = await adapter.validate(raw_data)
+        async with manage_pdf_resources(adapter) as raw_data:
+            validation = await adapter.validate(raw_data)
 
-        assert validation.is_valid is False
-        assert any("pages" in error for error in validation.errors)
+            assert validation.is_valid is False
+            assert any("pages" in error for error in validation.errors)
 
     @pytest.mark.asyncio
     async def test_transform_basic(self, sample_pdf_config):
         """Test basic transformation of PDF document."""
         adapter = PDFAdapter(sample_pdf_config)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         assert isinstance(transformed, dict)
         assert "pages" in transformed
@@ -184,8 +197,9 @@ class TestPDFAdapter:
         """Test transformation extracts document metadata."""
         sample_pdf_config["transformation"] = {"extract_metadata": True}
         adapter = PDFAdapter(sample_pdf_config)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         assert "metadata" in transformed
         metadata = transformed["metadata"]
@@ -200,8 +214,9 @@ class TestPDFAdapter:
     async def test_transform_with_tables(self, pdf_config_with_tables):
         """Test transformation with table extraction."""
         adapter = PDFAdapter(pdf_config_with_tables)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         # Check if tables were extracted
         assert "pages" in transformed
@@ -221,8 +236,9 @@ class TestPDFAdapter:
     async def test_transform_layout_mode(self, pdf_config_layout_mode):
         """Test transformation with layout-preserving text extraction."""
         adapter = PDFAdapter(pdf_config_layout_mode)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         assert "pages" in transformed
         assert len(transformed["pages"]) > 0
@@ -238,8 +254,9 @@ class TestPDFAdapter:
             "page_separator": "\n---PAGE BREAK---\n",
         }
         adapter = PDFAdapter(sample_pdf_config)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         assert "full_text" in transformed
         assert "\n---PAGE BREAK---\n" in transformed["full_text"]
@@ -279,8 +296,9 @@ class TestPDFAdapter:
     async def test_text_content_accuracy(self, sample_pdf_config):
         """Test that extracted text matches expected content."""
         adapter = PDFAdapter(sample_pdf_config)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         full_text = transformed["full_text"].lower()
         # Check for known content from sample PDF
@@ -311,8 +329,9 @@ class TestPDFAdapter:
             },
         }
         adapter = PDFAdapter(config)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         assert len(transformed["pages"]) == 2
         assert transformed["summary"]["total_pages"] == 2
@@ -347,8 +366,9 @@ class TestPDFAdapter:
             },
         }
         adapter = PDFAdapter(config)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         # Check that image extraction was attempted
         assert "pages" in transformed
@@ -360,8 +380,9 @@ class TestPDFAdapter:
     async def test_summary_statistics(self, sample_pdf_config):
         """Test that summary statistics are calculated correctly."""
         adapter = PDFAdapter(sample_pdf_config)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         summary = transformed["summary"]
         assert "total_pages" in summary
@@ -386,8 +407,9 @@ class TestPDFAdapter:
             "page_separator": "",
         }
         adapter = PDFAdapter(sample_pdf_config)
-        raw_data = await adapter.collect()
-        transformed = await adapter.transform(raw_data)
+        transformed = None
+        async with manage_pdf_resources(adapter) as raw_data:
+            transformed = await adapter.transform(raw_data)
 
         pages = transformed["pages"]
         trimmed_flags = [page["text_truncated"] for page in pages]
@@ -410,3 +432,44 @@ class TestPDFAdapter:
         assert summary["trimmed_pages"] == trimmed_count
         assert summary["trimmed_characters"] == trimmed_characters_total
         assert len(transformed["full_text"]) <= 20 * len(pages)
+
+    @pytest.mark.asyncio
+    async def test_cleanup_closes_handles(self, sample_pdf_config):
+        """Cleanup should close any open PDF document handles."""
+
+        class DummyDoc:
+            def __init__(self):
+                self.closed = False
+
+            def close(self):
+                self.closed = True
+
+        adapter = PDFAdapter(sample_pdf_config)
+        plumber_dummy = DummyDoc()
+        pymupdf_dummy = DummyDoc()
+
+        await adapter.cleanup({
+            "pdfplumber_doc": plumber_dummy,
+            "pymupdf_doc": pymupdf_dummy,
+        })
+
+        assert plumber_dummy.closed is True
+        assert pymupdf_dummy.closed is True
+
+    @pytest.mark.asyncio
+    async def test_process_invokes_cleanup(self, sample_pdf_config):
+        """Process pipeline should invoke cleanup even on success."""
+
+        class TrackingPDFAdapter(PDFAdapter):
+            def __init__(self, config):
+                super().__init__(config)
+                self.cleanup_called = False
+
+            async def cleanup(self, raw_data):
+                self.cleanup_called = True
+                await super().cleanup(raw_data)
+
+        adapter = TrackingPDFAdapter(sample_pdf_config)
+        await adapter.process()
+
+        assert adapter.cleanup_called is True
