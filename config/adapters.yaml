@@ -1,18 +1,39 @@
-# Example adapter configurations
-# Copy and modify for your specific data sources
-adapters:
+# Example adapter runtime configurations
+# These show how to use adapters with actual data sources
+# In production, pass these configs via API or code, not in files
+
+examples:
+  # JSON from file
   json_file:
     type: "json"
     source_id: "example-json-file"
     source_type: "file"
-    path: "/data/sample.json"
+    path: "/data/sample.json"  # Runtime path
     use_cloud_processing: false
     
+  # JSON from API
   json_api:
     type: "json"
     source_id: "example-api"
     source_type: "url"
-    url: "https://api.example.com/data"
+    url: "https://api.example.com/data"  # Runtime URL
     use_cloud_processing: true
     headers:
       Authorization: "Bearer ${API_TOKEN}"
+
+  # CSV from file
+  csv_file:
+    type: "csv"
+    source_id: "example-csv-file"
+    source_type: "file"
+    path: "/data/sample.csv"  # Runtime path
+    use_cloud_processing: false
+
+  # Excel from file
+  excel_file:
+    type: "excel"
+    source_id: "example-excel-file"
+    source_type: "file"
+    path: "/data/sample.xlsx"  # Runtime path
+    sheet_name: "Sheet1"  # Specify sheet at runtime
+    use_cloud_processing: false

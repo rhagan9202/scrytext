@@ -1,29 +1,22 @@
 # JSON Adapter Configuration
+# This file contains DEFAULT settings and options
+# Actual file paths should be provided at runtime via API or code
 
-# Source identification
-source_id: "json-production"
-
-# Source type: file, string, or url
-source_type: "file"
-
-# File path (required for source_type: file)
-path: "/data/input.json"
-
-# Processing mode: local or cloud
+# Default processing mode
 use_cloud_processing: false
 
-# Optional: Expected schema keys for validation
-expected_schema:
-  - name
-  - email
-  - created_at
-
-# Optional: Flatten nested structures
-flatten: false
-
-# Optional: Additional validation rules
+# JSON parsing options
+json_options:
+  strict: true  # Strict JSON parsing
+  flatten: false  # Flatten nested structures
+  
+# Data validation rules
 validation:
-  max_size_bytes: 10485760  # 10MB
-  required_fields:
-    - id
-    - timestamp
+  max_size_bytes: 10485760  # 10MB default limit
+  required_fields: []  # List field names that must exist
+  allow_null_values: true
+  
+# Data transformation options
+transformation:
+  flatten_nested: false
+  max_depth: null  # null for unlimited nesting

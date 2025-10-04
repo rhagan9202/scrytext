@@ -64,9 +64,11 @@ All adapters output payloads with:
 - See README.md for deployment and build commands
 
 ### Configuration Management
-- Use YAML for adapter configs (in `config/` directory)
+- Use YAML for adapter **default settings and options** (in `config/` directory)
+- **File paths and data sources** are provided at **runtime** via API requests or code
 - Environment variables override YAML settings (12-factor app pattern)
 - Validate configs with Pydantic models on startup
+- **Never hardcode runtime data locations in config files** - use them for parsing options, validation rules, and defaults only
 
 ### Error Handling Pattern
 - Raise custom exceptions from `exceptions.py` module

@@ -22,3 +22,37 @@ def sample_json_string_config():
         "data": '{"name": "test", "value": 42, "nested": {"key": "value"}}',
         "use_cloud_processing": False,
     }
+
+
+@pytest.fixture
+def sample_csv_config():
+    """Fixture providing sample CSV adapter configuration."""
+    return {
+        "source_id": "test-csv-source",
+        "source_type": "file",
+        "path": "tests/fixtures/sample.csv",
+        "use_cloud_processing": False,
+    }
+
+
+@pytest.fixture
+def sample_csv_string_config():
+    """Fixture providing CSV string adapter configuration."""
+    return {
+        "source_id": "test-csv-string",
+        "source_type": "string",
+        "data": "id,value,description\n1,100,First\n2,200,Second\n3,300,Third",
+        "use_cloud_processing": False,
+    }
+
+
+@pytest.fixture
+def sample_excel_config():
+    """Fixture providing sample Excel adapter configuration."""
+    return {
+        "source_id": "test-excel-source",
+        "source_type": "file",
+        "path": "tests/fixtures/sample.xlsx",
+        "sheet_name": "Products",
+        "use_cloud_processing": False,
+    }

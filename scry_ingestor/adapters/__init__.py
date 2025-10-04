@@ -43,5 +43,9 @@ def list_adapters() -> list[str]:
 
 # Import and register adapters here as they're created
 from .json_adapter import JSONAdapter
+from .csv_adapter import CSVAdapter
+from .excel_adapter import ExcelAdapter
 
 register_adapter("json", JSONAdapter)
+register_adapter("csv", CSVAdapter)
+register_adapter("excel", ExcelAdapter)

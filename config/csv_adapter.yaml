@@ -1,0 +1,27 @@
+# CSV Adapter Configuration
+# This file contains DEFAULT settings and options
+# Actual file paths should be provided at runtime via API or code
+
+# Default processing mode
+use_cloud_processing: false
+
+# CSV parsing options (pandas read_csv parameters)
+csv_options:
+  delimiter: ","
+  encoding: "utf-8"
+  skip_blank_lines: true
+  skip_rows: 0
+  header: 0  # Row number to use as column names
+  
+# Data validation rules
+validation:
+  min_rows: 1
+  max_rows: null  # null for unlimited
+  required_columns: []  # List column names that must exist
+  allow_empty_values: true
+  
+# Data transformation options
+transformation:
+  strip_whitespace: true
+  lowercase_columns: false
+  drop_duplicates: false

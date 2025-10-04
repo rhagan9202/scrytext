@@ -1,0 +1,29 @@
+# Excel Adapter Configuration
+# This file contains DEFAULT settings and options
+# Actual file paths should be provided at runtime via API or code
+
+# Default processing mode
+use_cloud_processing: false
+
+# Default sheet selection (0 for first sheet, or sheet name)
+default_sheet: 0
+
+# Excel parsing options (pandas read_excel parameters)
+excel_options:
+  header: 0  # Row number to use as column names
+  skip_rows: 0
+  use_columns: null  # null for all columns, or list of column names/indices
+  na_values: ["", "NA", "N/A", "null"]
+  
+# Data validation rules
+validation:
+  min_rows: 1
+  max_rows: null  # null for unlimited
+  required_columns: []  # List column names that must exist
+  allow_empty_values: true
+  
+# Data transformation options
+transformation:
+  strip_whitespace: true
+  lowercase_columns: false
+  drop_duplicates: false

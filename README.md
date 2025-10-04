@@ -133,6 +133,52 @@ print(payload.metadata)  # Processing metadata
 print(payload.validation)  # Validation results
 ```
 
+### Using the CSVAdapter
+
+```python
+from scry_ingestor.adapters.csv_adapter import CSVAdapter
+
+# Configure adapter
+config = {
+    "source_id": "my-csv-source",
+    "source_type": "file",
+    "path": "/path/to/data.csv",
+    "use_cloud_processing": False,
+}
+
+# Create adapter and process data
+adapter = CSVAdapter(config)
+payload = await adapter.process()
+
+# Access the data as pandas DataFrame
+print(payload.data)  # pandas DataFrame
+print(len(payload.data))  # Number of rows
+print(payload.validation.metrics)  # Row/column counts
+```
+
+### Using the ExcelAdapter
+
+```python
+from scry_ingestor.adapters.excel_adapter import ExcelAdapter
+
+# Configure adapter
+config = {
+    "source_id": "my-excel-source",
+    "source_type": "file",
+    "path": "/path/to/data.xlsx",
+    "sheet_name": "Sheet1",  # Or use 0 for first sheet
+    "use_cloud_processing": False,
+}
+
+# Create adapter and process data
+adapter = ExcelAdapter(config)
+payload = await adapter.process()
+
+# Access the data as pandas DataFrame
+print(payload.data)  # pandas DataFrame
+print(payload.data.columns.tolist())  # Column names
+```
+
 ### Using the REST API
 
 ```bash
@@ -142,7 +188,7 @@ curl http://localhost:8000/health
 # List available adapters
 curl http://localhost:8000/api/v1/ingest/adapters
 
-# Ingest data
+# Ingest JSON data
 curl -X POST http://localhost:8000/api/v1/ingest \
   -H "Content-Type: application/json" \
   -d '{
@@ -151,6 +197,31 @@ curl -X POST http://localhost:8000/api/v1/ingest \
       "source_id": "api-test",
       "source_type": "string",
       "data": "{\"name\": \"test\", \"value\": 42}"
+    }
+  }'
+
+# Ingest CSV data
+curl -X POST http://localhost:8000/api/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "adapter_type": "csv",
+    "source_config": {
+      "source_id": "csv-test",
+      "source_type": "file",
+      "path": "/data/sample.csv"
+    }
+  }'
+
+# Ingest Excel data
+curl -X POST http://localhost:8000/api/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "adapter_type": "excel",
+    "source_config": {
+      "source_id": "excel-test",
+      "source_type": "file",
+      "path": "/data/sample.xlsx",
+      "sheet_name": "Products"
     }
   }'
 ```
@@ -204,22 +275,55 @@ tests/
 
 ## Configuration
 
-Configuration uses YAML files with environment variable overrides:
+### Philosophy: Defaults vs. Runtime Data
+
+**Config files contain defaults and options**, not runtime data sources:
 
 ```yaml
-# config/json_adapter.yaml
-source_id: "production-json"
-source_type: "file"
-path: "/data/input.json"
+# config/csv_adapter.yaml - Default settings
 use_cloud_processing: false
+csv_options:
+  delimiter: ","
+  encoding: "utf-8"
+validation:
+  min_rows: 1
 ```
+
+**File paths and data sources are provided at runtime** via API or code:
+
+```python
+# Good: Pass paths at runtime
+config = {
+    "source_id": "my-data",
+    "source_type": "file",
+    "path": "/runtime/path/to/data.csv",  # Runtime decision
+}
+adapter = CSVAdapter(config)
+```
+
+```bash
+# Good: API caller specifies the file
+curl -X POST http://localhost:8000/api/v1/ingest \
+  -d '{"adapter_type": "csv", "source_config": {"source_id": "test", "path": "/data/file.csv"}}'
+```
+
+This separation enables:
+- **Portability**: Same config works across dev/staging/prod
+- **Flexibility**: Users specify data sources dynamically
+- **Security**: Paths not hardcoded in version control
+- **Multi-tenancy**: Different users/requests use different files
+
+### Environment Variable Overrides
 
 Environment variables override YAML settings using `SCRY_` prefix:
 
 ```bash
 export SCRY_AWS__REGION=us-west-2
 export SCRY_LOG_LEVEL=DEBUG
+export SCRY_CSV_OPTIONS__DELIMITER=";"
 ```
+
+Example: Override CSV delimiter globally without changing YAML files.
 
 ## Deployment
 
