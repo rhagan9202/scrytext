@@ -1,0 +1,18 @@
+# Example adapter configurations
+# Copy and modify for your specific data sources
+adapters:
+  json_file:
+    type: "json"
+    source_id: "example-json-file"
+    source_type: "file"
+    path: "/data/sample.json"
+    use_cloud_processing: false
+    
+  json_api:
+    type: "json"
+    source_id: "example-api"
+    source_type: "url"
+    url: "https://api.example.com/data"
+    use_cloud_processing: true
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"

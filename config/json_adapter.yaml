@@ -1,0 +1,29 @@
+# JSON Adapter Configuration
+
+# Source identification
+source_id: "json-production"
+
+# Source type: file, string, or url
+source_type: "file"
+
+# File path (required for source_type: file)
+path: "/data/input.json"
+
+# Processing mode: local or cloud
+use_cloud_processing: false
+
+# Optional: Expected schema keys for validation
+expected_schema:
+  - name
+  - email
+  - created_at
+
+# Optional: Flatten nested structures
+flatten: false
+
+# Optional: Additional validation rules
+validation:
+  max_size_bytes: 10485760  # 10MB
+  required_fields:
+    - id
+    - timestamp

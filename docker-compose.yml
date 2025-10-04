@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Scry Ingestor API Service
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - SCRY_LOG_LEVEL=INFO
+      - SCRY_AWS__REGION=${AWS_REGION:-us-east-1}
+    volumes:
+      - ./config:/app/config:ro
+      - ./tests/fixtures:/app/fixtures:ro
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - scry-network
+    restart: unless-stopped
+
+  # Redis for Celery broker
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - scry-network
+    restart: unless-stopped
+
+  # PostgreSQL for metadata storage
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=scry_ingestor
+      - POSTGRES_USER=scry
+      - POSTGRES_PASSWORD=scry_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - scry-network
+    restart: unless-stopped
+
+  # Celery worker for async tasks
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A scry_ingestor.tasks.celery_app worker --loglevel=info
+    environment:
+      - SCRY_LOG_LEVEL=INFO
+      - SCRY_REDIS_URL=redis://redis:6379/0
+      - SCRY_AWS__REGION=${AWS_REGION:-us-east-1}
+    volumes:
+      - ./config:/app/config:ro
+      - ./tests/fixtures:/app/fixtures:ro
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - scry-network
+    restart: unless-stopped
+
+networks:
+  scry-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  postgres-data:

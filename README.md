@@ -1,0 +1,275 @@
+# Scry_Ingestor
+
+**Data ingestion service** that collects, processes, and standardizes data from diverse sources (structured, unstructured, tabular) for downstream applications.
+
+## Features
+
+- 🔌 **Adapter Pattern** - Pluggable adapters for different data sources
+- 📦 **Standardized Payloads** - Consistent data structure with metadata and validation
+- 🚀 **Dual Deployment** - Use as Python package or containerized service
+- ⚡ **Async Processing** - FastAPI for REST endpoints, Celery for background tasks
+- 🔍 **Data Validation** - Built-in validation with quality metrics
+- 📊 **Multiple Formats** - Support for JSON, CSV, text, and custom formats
+- 🛡️ **Type Safety** - Full Pydantic validation throughout
+
+## Quick Start
+
+### Prerequisites
+
+- Python 3.10+
+- Poetry 1.7.0+
+- Docker & Docker Compose (for containerized deployment)
+
+### Installation
+
+#### As a Python Package
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/scrytext.git
+cd scrytext
+
+# Install with Poetry
+poetry install
+
+# Activate the virtual environment
+poetry shell
+```
+
+#### With Docker
+
+```bash
+# Build and start all services
+docker-compose up --build
+
+# API will be available at http://localhost:8000
+```
+
+## Development Workflows
+
+### Running the API Locally
+
+```bash
+# With Poetry
+poetry run uvicorn scry_ingestor.api.main:app --reload --host 0.0.0.0 --port 8000
+
+# With Docker Compose
+docker-compose up api
+```
+
+### Running Tests
+
+```bash
+# Run all tests with coverage
+poetry run pytest
+
+# Run specific test file
+poetry run pytest tests/adapters/test_json_adapter.py
+
+# Run with verbose output
+poetry run pytest -v
+
+# Run and watch for changes
+poetry run pytest-watch
+```
+
+### Code Quality
+
+```bash
+# Format code with Black
+poetry run black scry_ingestor/ tests/
+
+# Lint with Ruff
+poetry run ruff check scry_ingestor/ tests/
+
+# Type checking with mypy
+poetry run mypy scry_ingestor/
+```
+
+### Building the Package
+
+```bash
+# Build wheel and sdist
+poetry build
+
+# Output will be in dist/
+```
+
+### Building Docker Images
+
+```bash
+# Build production image
+docker build -t scry-ingestor:latest .
+
+# Build with specific tag
+docker build -t scry-ingestor:v0.1.0 .
+
+# Multi-platform build (requires buildx)
+docker buildx build --platform linux/amd64,linux/arm64 -t scry-ingestor:latest .
+```
+
+## Usage Examples
+
+### Using the JSONAdapter
+
+```python
+from scry_ingestor.adapters.json_adapter import JSONAdapter
+
+# Configure adapter
+config = {
+    "source_id": "my-json-source",
+    "source_type": "file",
+    "path": "/path/to/data.json",
+    "use_cloud_processing": False,
+}
+
+# Create adapter and process data
+adapter = JSONAdapter(config)
+payload = await adapter.process()
+
+# Access the data
+print(payload.data)  # Parsed JSON dict
+print(payload.metadata)  # Processing metadata
+print(payload.validation)  # Validation results
+```
+
+### Using the REST API
+
+```bash
+# Health check
+curl http://localhost:8000/health
+
+# List available adapters
+curl http://localhost:8000/api/v1/ingest/adapters
+
+# Ingest data
+curl -X POST http://localhost:8000/api/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "adapter_type": "json",
+    "source_config": {
+      "source_id": "api-test",
+      "source_type": "string",
+      "data": "{\"name\": \"test\", \"value\": 42}"
+    }
+  }'
+```
+
+### Creating a Custom Adapter
+
+```python
+from scry_ingestor.adapters.base import BaseAdapter
+from scry_ingestor.schemas.payload import ValidationResult
+
+class MyCustomAdapter(BaseAdapter):
+    async def collect(self) -> Any:
+        # Implement data collection logic
+        return raw_data
+    
+    async def validate(self, raw_data: Any) -> ValidationResult:
+        # Implement validation logic
+        return ValidationResult(is_valid=True, errors=[], warnings=[], metrics={})
+    
+    async def transform(self, raw_data: Any) -> Any:
+        # Implement transformation logic
+        return transformed_data
+
+# Register the adapter
+from scry_ingestor.adapters import register_adapter
+register_adapter("my-custom", MyCustomAdapter)
+```
+
+## Project Structure
+
+```
+scry_ingestor/
+├── adapters/          # Data source adapters
+│   ├── base.py        # BaseAdapter abstract class
+│   ├── json_adapter.py
+│   └── __init__.py    # Adapter registry
+├── api/               # FastAPI application
+│   ├── main.py        # App setup and middleware
+│   └── routes/        # API endpoints
+├── schemas/           # Pydantic validation schemas
+├── utils/             # Shared utilities (logging, config)
+├── tasks/             # Celery task definitions
+├── models/            # SQLAlchemy ORM models
+└── exceptions.py      # Custom exceptions
+
+tests/
+├── adapters/          # Adapter tests
+├── api/               # API tests
+└── fixtures/          # Live test data
+```
+
+## Configuration
+
+Configuration uses YAML files with environment variable overrides:
+
+```yaml
+# config/json_adapter.yaml
+source_id: "production-json"
+source_type: "file"
+path: "/data/input.json"
+use_cloud_processing: false
+```
+
+Environment variables override YAML settings using `SCRY_` prefix:
+
+```bash
+export SCRY_AWS__REGION=us-west-2
+export SCRY_LOG_LEVEL=DEBUG
+```
+
+## Deployment
+
+### Docker Deployment
+
+```bash
+# Production deployment with docker-compose
+docker-compose -f docker-compose.prod.yml up -d
+
+# Scale workers
+docker-compose up --scale worker=3
+```
+
+### Kubernetes Deployment
+
+```bash
+# Using Helm (chart not included in this repo)
+helm install scry-ingestor ./helm-chart \
+  --set image.tag=v0.1.0 \
+  --set replicaCount=3
+```
+
+### Package Deployment
+
+```bash
+# Build and publish to PyPI
+poetry build
+poetry publish
+
+# Install from PyPI
+pip install scry-ingestor
+```
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SCRY_LOG_LEVEL` | Logging level | `INFO` |
+| `SCRY_AWS__REGION` | AWS region | `us-east-1` |
+| `CELERY_BROKER_URL` | Celery broker URL | `redis://localhost:6379/0` |
+| `CELERY_RESULT_BACKEND` | Celery result backend | `redis://localhost:6379/0` |
+
+## Contributing
+
+See [.github/copilot-instructions.md](.github/copilot-instructions.md) for development guidelines and architectural patterns.
+
+## License
+
+[Add your license here]
+
+## Support
+
+[Add contact/support information]
