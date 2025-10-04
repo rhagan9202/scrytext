@@ -1,18 +1,39 @@
 # Word Adapter Implementation - Summary
 
 ## Overview
-Successfully implemented an **unstructured text adapter** for Microsoft Word (.docx) documents, following the established adapter pattern in the Scry_Ingestor project.
+Successfully implemented an **unstructured text adapter** for Microsoft Word documents in .docx format (Office 2007+), following the established adapter pattern in the Scry_Ingestor project.
 
 ## Implementation Date
-October 4, 2025
+October 4, 2025 (Initial implementation)  
+Revised: [Current Date] (Updated to .docx-only support)
 
 ## Adapter Details
 
 ### WordAdapter (`scry_ingestor/adapters/word_adapter.py`)
 - **Purpose**: Extract unstructured text and metadata from Word documents
 - **Library**: `python-docx` (1.2.0) + `lxml` (6.0.2)
+- **Supported Format**: `.docx` (Office 2007+ / Office Open XML) ONLY
 - **Supported Sources**: .docx file paths
 - **Output Format**: Dictionary with structured content
+
+### Supported Format
+**`.docx` files only** - Office 2007+ Open XML format
+
+**Not supported:** Legacy `.doc` files (Office 97-2003 binary format)
+
+**Why .docx-only?**
+- `.doc` is a proprietary binary format requiring external dependencies (antiword, textract with 19+ deps)
+- `.docx` is the modern standard (since 2007) with full metadata and table support
+- `python-docx` provides native, full-featured `.docx` support without external binaries
+- Industry has largely moved to `.docx` as the standard format
+
+**Converting .doc files:**
+If you have legacy `.doc` files, convert them to `.docx` first:
+- **Microsoft Word**: File > Save As > Word Document (.docx)
+- **LibreOffice Writer**: File > Save As > ODF Text Document (.odt) or Word 2007-365 (.docx)
+- **Google Docs**: File > Download > Microsoft Word (.docx)
+- **Online converters**: CloudConvert (cloudconvert.com), Zamzar (zamzar.com)
+- **Command-line**: `libreoffice --headless --convert-to docx file.doc`
 
 ### Key Features
 1. **Text Extraction**
@@ -79,8 +100,8 @@ config = {
 ## Test Suite
 
 ### Test Coverage
-- **13 tests** passing with **88% coverage**
-- Live fixture: `tests/fixtures/sample.docx`
+- **15 tests** passing with **89% coverage**
+- Live fixture: `tests/fixtures/sample.docx` (also sample.doc for rejection testing)
 - Fixture includes: 5 paragraphs, metadata, and a 3x3 table
 
 ### Tests Implemented (`tests/adapters/test_word_adapter.py`)
@@ -97,6 +118,8 @@ config = {
 11. ✅ `test_process_full_pipeline` - End-to-end pipeline
 12. ✅ `test_process_with_correlation_id` - Correlation ID support
 13. ✅ `test_text_content_accuracy` - Text content verification
+14. ✅ `test_unsupported_format_error_message` - Clear error messages for unsupported formats
+15. ✅ `test_doc_file_rejected` - Verify .doc files are rejected with helpful guidance
 
 ## Integration
 

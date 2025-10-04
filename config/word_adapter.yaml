@@ -1,6 +1,16 @@
 # Word Adapter Configuration
-# This file contains default settings for the Word (.docx) adapter.
+# This file contains default settings for the Word adapter.
 # Actual file paths should be provided at runtime via API or code.
+
+# Supported format: .docx (Office 2007+ / Office Open XML) ONLY
+# Legacy .doc files (Office 97-2003) are NOT supported.
+#
+# If you have .doc files, please convert them to .docx format first:
+# - Microsoft Word: File > Save As > Word Document (.docx)
+# - LibreOffice Writer: File > Save As > ODF Text Document (.odt) or Word 2007-365 (.docx)
+# - Google Docs: File > Download > Microsoft Word (.docx)
+# - Online converters: CloudConvert (cloudconvert.com), Zamzar (zamzar.com)
+# - Command-line: LibreOffice (libreoffice --headless --convert-to docx file.doc)
 
 # Processing mode
 use_cloud_processing: false
@@ -15,5 +25,5 @@ validation:
 transformation:
   strip_whitespace: true  # Remove leading/trailing whitespace from paragraphs
   paragraph_separator: "\n"  # How to join paragraphs (newline, double newline, etc.)
-  extract_metadata: true  # Extract document properties (author, title, etc.)
-  extract_tables: false  # Extract tables as structured data
+  extract_metadata: true  # Extract document properties (author, title, subject, keywords, timestamps)
+  extract_tables: false  # Extract tables as structured data (2D arrays)

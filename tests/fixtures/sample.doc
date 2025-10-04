@@ -1,0 +1,25 @@
+{
+\rtf1\ansi\deff0
+{\fonttbl{\f0 Times New Roman;}}
+{\colortbl;\red0\green0\blue0;}
+\f0\fs24
+
+\b Sample DOC Document\b0
+
+\par
+This is the first paragraph of the legacy .doc test document.
+
+\par
+This is the second paragraph with some more content for testing purposes.
+
+\par
+Here is a third paragraph to ensure we have enough content.
+
+\par
+
+\par
+This paragraph comes after a blank line.
+
+\par
+Legacy documents are important for backward compatibility.
+}

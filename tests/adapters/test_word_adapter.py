@@ -55,9 +55,11 @@ class TestWordAdapter:
         adapter = WordAdapter(sample_word_config)
         raw_data = await adapter.collect()
 
-        # Check that document was loaded
+        # Check that document was loaded (returns Document object directly)
         assert raw_data is not None
-        assert len(raw_data.paragraphs) > 0
+        # Check it has expected attributes of a DocxDocument
+        assert hasattr(raw_data, 'paragraphs')
+        assert hasattr(raw_data, 'core_properties')
 
     @pytest.mark.asyncio
     async def test_collect_missing_file(self):
@@ -74,7 +76,7 @@ class TestWordAdapter:
 
     @pytest.mark.asyncio
     async def test_collect_invalid_file_type(self):
-        """Test collecting from non-docx file raises error."""
+        """Test collecting from non-Word file raises error with helpful message."""
         config = {
             "source_id": "test-invalid",
             "source_type": "file",
@@ -82,8 +84,13 @@ class TestWordAdapter:
         }
         adapter = WordAdapter(config)
 
-        with pytest.raises(CollectionError, match="Invalid file type"):
+        with pytest.raises(CollectionError) as exc_info:
             await adapter.collect()
+
+        error_message = str(exc_info.value)
+        assert "Unsupported file type" in error_message
+        assert ".docx" in error_message
+        assert "convert" in error_message.lower()
 
     @pytest.mark.asyncio
     async def test_validate_valid_document(self, sample_word_config):
@@ -229,3 +236,39 @@ class TestWordAdapter:
         assert "first paragraph" in text.lower()
         assert "second paragraph" in text.lower()
         assert "third paragraph" in text.lower()
+
+    @pytest.mark.asyncio
+    async def test_unsupported_format_error_message(self):
+        """Test that unsupported formats (.doc, .txt, etc.) provide clear error messages."""
+        config = {
+            "source_id": "test-unsupported",
+            "source_type": "file",
+            "path": "tests/fixtures/sample.csv",
+        }
+        adapter = WordAdapter(config)
+
+        with pytest.raises(CollectionError) as exc_info:
+            await adapter.collect()
+
+        error_message = str(exc_info.value)
+        assert "Unsupported file type" in error_message
+        assert ".docx" in error_message
+        assert "convert" in error_message.lower()
+
+    @pytest.mark.asyncio
+    async def test_doc_file_rejected(self):
+        """Test that .doc files are rejected with helpful message."""
+        config = {
+            "source_id": "test-doc-file",
+            "source_type": "file",
+            "path": "tests/fixtures/sample.doc",
+        }
+        adapter = WordAdapter(config)
+
+        with pytest.raises(CollectionError) as exc_info:
+            await adapter.collect()
+
+        error_message = str(exc_info.value)
+        assert "Unsupported file type" in error_message
+        assert ".doc" in error_message
+        assert "convert" in error_message.lower()

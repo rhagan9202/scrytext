@@ -184,11 +184,11 @@ print(payload.data.columns.tolist())  # Column names
 ```python
 from scry_ingestor.adapters.word_adapter import WordAdapter
 
-# Configure adapter
+# Configure adapter (.docx files only)
 config = {
     "source_id": "my-word-source",
     "source_type": "file",
-    "path": "/path/to/document.docx",
+    "path": "/path/to/document.docx",  # Must be .docx format
     "use_cloud_processing": False,
     "transformation": {
         "extract_metadata": True,  # Extract author, title, etc.
@@ -209,6 +209,11 @@ print(payload.data["metadata"]["title"])  # Document title
 if "tables" in payload.data:
     print(payload.data["tables"])  # Extracted tables
 ```
+
+**Note:** WordAdapter supports `.docx` files only (Office 2007+). If you have legacy `.doc` files:
+- Convert using Microsoft Word: File > Save As > Word Document (.docx)
+- Convert using LibreOffice: `libreoffice --headless --convert-to docx file.doc`
+- Convert using online tools: CloudConvert, Zamzar, or Google Docs
 
 ### Using the REST API
 

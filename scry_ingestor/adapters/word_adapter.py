@@ -1,4 +1,4 @@
-"""Unstructured adapter for Word (.docx) documents."""
+"""Unstructured adapter for Word documents (.docx format only)."""
 
 from pathlib import Path
 from typing import Any
@@ -15,20 +15,29 @@ class WordAdapter(BaseAdapter):
     Adapter for collecting and processing unstructured text from Word documents.
 
     Supports:
-    - Local .docx file paths
-    - Extracting text from paragraphs and tables
-    - Optional metadata extraction (author, title, etc.)
+    - .docx files (Office 2007+ / Office Open XML format)
+    - Text extraction from paragraphs
+    - Metadata extraction (author, title, subject, keywords, timestamps)
+    - Table extraction (optional)
+
+    Note: This adapter only supports .docx files. Legacy .doc files (Office 97-2003)
+    are not supported. Users with .doc files should convert them to .docx first using:
+    - Microsoft Word: File > Save As > .docx
+    - LibreOffice: File > Save As > .docx
+    - Online converters (e.g., CloudConvert, Zamzar)
     """
 
-    async def collect(self) -> DocxDocument:
+    SUPPORTED_FORMAT = ".docx"
+
+    async def collect(self) -> Any:
         """
-        Collect raw data from Word document.
+        Collect raw data from Word document (.docx only).
 
         Returns:
-            Document object from python-docx
+            DocxDocument object containing document structure and content
 
         Raises:
-            CollectionError: If document collection fails
+            CollectionError: If document collection fails or unsupported format
         """
         source_type = self.config.get("source_type", "file")
 
@@ -42,8 +51,13 @@ class WordAdapter(BaseAdapter):
                 if not path.exists():
                     raise CollectionError(f"File not found: {file_path}")
 
-                if path.suffix.lower() != ".docx":
-                    raise CollectionError(f"Invalid file type: {path.suffix}. Expected .docx")
+                file_format = path.suffix.lower()
+                if file_format != self.SUPPORTED_FORMAT:
+                    raise CollectionError(
+                        f"Unsupported file type: {file_format}. "
+                        f"Only .docx files are supported. "
+                        f"For .doc files, please convert to .docx format first."
+                    )
 
                 return DocxDocument(file_path)
 
@@ -55,12 +69,12 @@ class WordAdapter(BaseAdapter):
         except Exception as e:
             raise CollectionError(f"Failed to parse Word document: {e}")
 
-    async def validate(self, raw_data: DocxDocument) -> ValidationResult:
+    async def validate(self, raw_data: Any) -> ValidationResult:
         """
         Validate the Word document structure and content.
 
         Args:
-            raw_data: Document object from collect()
+            raw_data: DocxDocument object from collect()
 
         Returns:
             ValidationResult with quality metrics
@@ -70,16 +84,18 @@ class WordAdapter(BaseAdapter):
         metrics = {}
 
         try:
+            doc = raw_data
+
             # Count paragraphs
-            paragraph_count = len(raw_data.paragraphs)
+            paragraph_count = len(doc.paragraphs)
             metrics["paragraph_count"] = paragraph_count
 
             # Count tables
-            table_count = len(raw_data.tables)
+            table_count = len(doc.tables)
             metrics["table_count"] = table_count
 
             # Extract text and count
-            text_content = "\n".join([p.text for p in raw_data.paragraphs])
+            text_content = "\n".join([p.text for p in doc.paragraphs])
             text_length = len(text_content.strip())
             metrics["text_length_chars"] = text_length
             metrics["word_count"] = len(text_content.split())
@@ -124,20 +140,21 @@ class WordAdapter(BaseAdapter):
             metrics=metrics,
         )
 
-    async def transform(self, raw_data: DocxDocument) -> dict[str, Any]:
+    async def transform(self, raw_data: Any) -> dict[str, Any]:
         """
         Transform Word document into standardized text format.
 
         Args:
-            raw_data: Document object from collect()
+            raw_data: DocxDocument object from collect()
 
         Returns:
             Dictionary with extracted text, metadata, and optional table data
         """
         transformation_config = self.config.get("transformation", {})
+        doc = raw_data
 
         # Extract text from paragraphs
-        paragraphs = [p.text for p in raw_data.paragraphs if p.text.strip()]
+        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
 
         # Optionally clean text
         if transformation_config.get("strip_whitespace", True):
@@ -150,20 +167,22 @@ class WordAdapter(BaseAdapter):
         # Extract core properties (metadata)
         metadata = {}
         if transformation_config.get("extract_metadata", True):
-            core_props = raw_data.core_properties
+            core_props = doc.core_properties
             metadata = {
                 "author": core_props.author,
                 "title": core_props.title,
                 "subject": core_props.subject,
                 "keywords": core_props.keywords,
                 "created": core_props.created.isoformat() if core_props.created else None,
-                "modified": core_props.modified.isoformat() if core_props.modified else None,
+                "modified": (
+                    core_props.modified.isoformat() if core_props.modified else None
+                ),
             }
 
         # Extract tables
         tables_data = []
         if transformation_config.get("extract_tables", False):
-            for table in raw_data.tables:
+            for table in doc.tables:
                 table_rows = []
                 for row in table.rows:
                     table_rows.append([cell.text for cell in row.cells])
