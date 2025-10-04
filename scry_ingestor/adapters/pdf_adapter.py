@@ -6,9 +6,11 @@ from typing import Any
 
 import pdfplumber
 import pymupdf  # PyMuPDF (fitz)
+from pydantic import ValidationError as PydanticValidationError
 
-from ..exceptions import CollectionError
+from ..exceptions import CollectionError, ConfigurationError
 from ..schemas.payload import ValidationResult
+from ..schemas.transformations import PDFTransformationConfig
 from ..utils.file_readers import read_binary_file, resolve_binary_read_options
 from .base import BaseAdapter
 
@@ -37,6 +39,17 @@ class PDFAdapter(BaseAdapter):
     """
 
     SUPPORTED_FORMAT = ".pdf"
+
+    def __init__(self, config: dict[str, Any]):
+        super().__init__(config)
+        try:
+            self._transformation = PDFTransformationConfig.model_validate(
+                config.get("transformation") or {}
+            )
+        except PydanticValidationError as exc:
+            raise ConfigurationError(
+                f"Invalid PDF transformation configuration: {exc}"
+            ) from exc
 
     async def collect(self) -> dict[str, Any]:
         """
@@ -241,7 +254,7 @@ class PDFAdapter(BaseAdapter):
 
     def _transform_sync(self, raw_data: dict[str, Any]) -> dict[str, Any]:
         """Synchronous transformation logic executed in a worker thread."""
-        transformation_config = self.config.get("transformation", {})
+        transformation_config = self._transformation
         pdfplumber_doc = raw_data["pdfplumber_doc"]
         pymupdf_doc = raw_data["pymupdf_doc"]
 
@@ -252,7 +265,7 @@ class PDFAdapter(BaseAdapter):
         }
 
         # Extract metadata using pymupdf (more comprehensive)
-        if transformation_config.get("extract_metadata", True):
+        if transformation_config.extract_metadata:
             metadata = pymupdf_doc.metadata or {}
             result["metadata"] = {
                 "title": metadata.get("title"),
@@ -269,20 +282,15 @@ class PDFAdapter(BaseAdapter):
             }
 
         # Process each page
-        extract_tables = transformation_config.get("extract_tables", False)
-        extract_images = transformation_config.get("extract_images", False)
-        layout_mode = transformation_config.get("layout_mode", False)
-        page_range = transformation_config.get("page_range")  # e.g., [0, 5] for first 5 pages
-        max_text_chars_per_page = transformation_config.get("max_text_chars_per_page")
-        text_trim_limit = (
-            max_text_chars_per_page
-            if isinstance(max_text_chars_per_page, int) and max_text_chars_per_page > 0
-            else None
-        )
+        extract_tables = transformation_config.extract_tables
+        extract_images = transformation_config.extract_images
+        layout_mode = transformation_config.layout_mode
+        page_range = transformation_config.page_range
+        text_trim_limit = transformation_config.max_text_chars_per_page
 
         pages_to_process = pdfplumber_doc.pages
         if page_range:
-            start, end = page_range[0], page_range[1]
+            start, end = page_range
             pages_to_process = pdfplumber_doc.pages[start:end]
 
         total_text_length = 0
@@ -375,8 +383,8 @@ class PDFAdapter(BaseAdapter):
         }
 
         # Optionally combine all page text
-        if transformation_config.get("combine_pages", True):
-            page_separator = transformation_config.get("page_separator", "\n\n")
+        if transformation_config.combine_pages:
+            page_separator = transformation_config.page_separator
             result["full_text"] = page_separator.join(
                 [p["text"] for p in result["pages"] if p["text"]]
             )

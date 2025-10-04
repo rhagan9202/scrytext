@@ -8,8 +8,11 @@ from typing import Any
 
 import httpx
 
-from ..exceptions import CollectionError, TransformationError, ValidationError
+from pydantic import ValidationError as PydanticValidationError
+
+from ..exceptions import CollectionError, ConfigurationError, TransformationError, ValidationError
 from ..schemas.payload import ValidationResult
+from ..schemas.transformations import RESTTransformationConfig
 from .base import BaseAdapter
 
 
@@ -17,6 +20,17 @@ class RESTAdapter(BaseAdapter):
     """Adapter that fetches data from HTTP APIs using httpx."""
 
     SUPPORTED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+
+    def __init__(self, config: dict[str, Any]):
+        super().__init__(config)
+        try:
+            self._transformation = RESTTransformationConfig.model_validate(
+                config.get("transformation") or {}
+            )
+        except PydanticValidationError as exc:
+            raise ConfigurationError(
+                f"Invalid REST transformation configuration: {exc}"
+            ) from exc
 
     async def collect(self) -> dict[str, Any]:
         """Perform the HTTP request and return the raw response payload."""
@@ -178,12 +192,8 @@ class RESTAdapter(BaseAdapter):
     async def transform(self, raw_data: dict[str, Any]) -> dict[str, Any]:
         """Transform the HTTP response content into structured data."""
 
-        transformation_cfg = self._ensure_dict(
-            self.config.get("transformation"),
-            error_cls=TransformationError,
-            context="transformation configuration",
-        )
-        preferred_format = transformation_cfg.get("response_format", "auto").lower()
+        transformation_cfg = self._transformation
+        preferred_format = transformation_cfg.response_format
 
         body: Any
         try:
@@ -250,5 +260,4 @@ class RESTAdapter(BaseAdapter):
 
     def _response_format_hint(self) -> str:
         """Return the preferred response format hint from config."""
-        transformation_cfg = self.config.get("transformation") or {}
-        return str(transformation_cfg.get("response_format", "auto")).lower()
+        return self._transformation.response_format

@@ -7,9 +7,11 @@ from typing import Any
 
 import httpx
 from bs4 import BeautifulSoup
+from pydantic import ValidationError as PydanticValidationError
 
-from ..exceptions import CollectionError, TransformationError, ValidationError
+from ..exceptions import CollectionError, ConfigurationError, TransformationError, ValidationError
 from ..schemas.payload import ValidationResult
+from ..schemas.transformations import BeautifulSoupTransformationConfig
 from .base import BaseAdapter
 
 
@@ -18,6 +20,17 @@ class BeautifulSoupAdapter(BaseAdapter):
 
     SUPPORTED_METHODS = {"GET", "HEAD"}
     DEFAULT_PARSER = "html.parser"
+
+    def __init__(self, config: dict[str, Any]):
+        super().__init__(config)
+        try:
+            self._transformation = BeautifulSoupTransformationConfig.model_validate(
+                config.get("transformation") or {}
+            )
+        except PydanticValidationError as exc:
+            raise ConfigurationError(
+                f"Invalid BeautifulSoup transformation configuration: {exc}"
+            ) from exc
 
     async def collect(self) -> dict[str, Any]:
         """Fetch HTML content from a remote URL."""
@@ -139,12 +152,7 @@ class BeautifulSoupAdapter(BaseAdapter):
     async def transform(self, raw_data: dict[str, Any]) -> dict[str, Any]:
         """Transform HTML into structured data and extracted fields."""
 
-        transformation_cfg = self._ensure_mapping(
-            self.config.get("transformation"),
-            error_cls=TransformationError,
-            context="transformation configuration",
-        )
-
+        transformation_cfg = self._transformation
         parser = self._resolve_parser()
         soup = BeautifulSoup(raw_data["content"], parser)
 
@@ -155,26 +163,28 @@ class BeautifulSoupAdapter(BaseAdapter):
             "elapsed_ms": raw_data["elapsed_ms"],
         }
 
-        if transformation_cfg.get("include_text", True):
-            separator = transformation_cfg.get("text_separator", "\n")
-            strip = transformation_cfg.get("text_strip", True)
-            text = soup.get_text(separator=separator, strip=strip)
-            max_text_chars = transformation_cfg.get("max_text_chars")
-            if isinstance(max_text_chars, int) and max_text_chars > 0:
+        if transformation_cfg.include_text:
+            text = soup.get_text(
+                separator=transformation_cfg.text_separator,
+                strip=transformation_cfg.text_strip,
+            )
+            max_text_chars = transformation_cfg.max_text_chars
+            if max_text_chars is not None:
                 text = text[:max_text_chars]
             result["text"] = text
 
-        if transformation_cfg.get("include_links", True):
+        if transformation_cfg.include_links:
             unique_links: dict[str, dict[str, Any]] = {}
             for anchor in soup.find_all("a", href=True):
-                href = anchor.get("href")
-                if not href:
+                href_value = anchor.get("href")
+                if not href_value:
                     continue
+                href = str(href_value)
                 text = anchor.get_text(strip=True)
                 unique_links[href] = {"href": href, "text": text or None}
             result["links"] = list(unique_links.values())
 
-        if transformation_cfg.get("include_metadata", True):
+        if transformation_cfg.include_metadata:
             meta_tags = []
             for meta in soup.find_all("meta"):
                 attributes = {k: v for k, v in meta.attrs.items() if isinstance(v, str)}
@@ -182,21 +192,14 @@ class BeautifulSoupAdapter(BaseAdapter):
                     meta_tags.append(attributes)
             result["metadata"] = meta_tags
 
-        selectors = transformation_cfg.get("selectors", {})
-        if isinstance(selectors, Mapping):
+        if transformation_cfg.selectors:
             extracted: dict[str, Any] = {}
-            for key, selector in selectors.items():
-                if not isinstance(selector, str):
-                    raise TransformationError(
-                        f"Selector for '{key}' must be a string"
-                    )
+            for key, selector in transformation_cfg.selectors.items():
                 nodes = soup.select(selector)
                 extracted[key] = [node.get_text(strip=True) for node in nodes if node]
             result["extracted"] = extracted
-        elif selectors:
-            raise TransformationError("'selectors' must be a mapping of names to CSS selectors")
 
-        if transformation_cfg.get("include_raw", False):
+        if transformation_cfg.include_raw:
             result["raw_html"] = raw_data["content"]
 
         return result

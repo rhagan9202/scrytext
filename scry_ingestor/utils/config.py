@@ -1,11 +1,18 @@
-"""Configuration loader for YAML files with environment variable overrides."""
+"""Configuration loader and settings helpers for Scry_Ingestor."""
 
 import os
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ValidationError as PydanticValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    field_validator,
+    ValidationError as PydanticValidationError,
+)
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..exceptions import ConfigurationError
 
@@ -24,7 +31,7 @@ def load_yaml_config(config_path: str | Path) -> dict[str, Any]:
         ConfigurationError: If file not found or invalid YAML
     """
     try:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f)
             return config if config else {}
     except FileNotFoundError:
@@ -86,3 +93,53 @@ def validate_config(config: dict[str, Any], model: type[BaseModel]) -> BaseModel
         return model(**config)
     except PydanticValidationError as e:
         raise ConfigurationError(f"Configuration validation failed: {e}")
+
+
+class AWSSettings(BaseModel):
+    """AWS-specific configuration options derived from global settings."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    region: str | None = None
+
+
+class GlobalSettings(BaseSettings):
+    """Global application settings sourced from environment variables."""
+
+    model_config = SettingsConfigDict(
+        env_prefix="SCRY_",
+        env_nested_delimiter="__",
+        extra="ignore",
+    )
+
+    environment: str = "development"
+    log_level: str = "INFO"
+    redis_url: str | None = None
+    config_dir: Path = Path("config")
+    fixtures_dir: Path = Path("tests/fixtures")
+    aws: AWSSettings = AWSSettings()
+
+    @field_validator("log_level")
+    @classmethod
+    def _normalize_log_level(cls, value: str) -> str:
+        """Ensure log level values are uppercase for logging config."""
+
+        return value.upper()
+
+    @field_validator("config_dir", "fixtures_dir", mode="before")
+    @classmethod
+    def _expand_paths(cls, value: Any) -> Any:
+        """Allow string paths and expand user markers."""
+
+        if isinstance(value, Path):
+            return value
+        if isinstance(value, str):
+            return Path(value).expanduser()
+        return value
+
+
+@lru_cache(maxsize=1)
+def get_settings() -> GlobalSettings:
+    """Return a cached instance of :class:`GlobalSettings`."""
+
+    return GlobalSettings()

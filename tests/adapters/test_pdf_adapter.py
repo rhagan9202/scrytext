@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import pytest
 
 from scry_ingestor.adapters.pdf_adapter import PDFAdapter
-from scry_ingestor.exceptions import CollectionError
+from scry_ingestor.exceptions import CollectionError, ConfigurationError
 
 
 @asynccontextmanager
@@ -315,6 +315,16 @@ class TestPDFAdapter:
         payload = await adapter.process()
 
         assert payload.metadata.correlation_id == "test-correlation-123"
+
+    def test_invalid_transformation_page_range_raises_configuration_error(
+        self, sample_pdf_config
+    ) -> None:
+        """Invalid page range bounds should fail fast during adapter creation."""
+
+        sample_pdf_config["transformation"] = {"page_range": [5, 2]}
+
+        with pytest.raises(ConfigurationError):
+            PDFAdapter(sample_pdf_config)
 
     @pytest.mark.asyncio
     async def test_text_content_accuracy(self, sample_pdf_config):

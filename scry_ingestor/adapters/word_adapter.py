@@ -5,9 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from docx import Document as DocxDocument
+from pydantic import ValidationError as PydanticValidationError
 
-from ..exceptions import CollectionError
+from ..exceptions import CollectionError, ConfigurationError
 from ..schemas.payload import ValidationResult
+from ..schemas.transformations import WordTransformationConfig
 from ..utils.file_readers import read_binary_file, resolve_binary_read_options
 from .base import BaseAdapter
 
@@ -30,6 +32,17 @@ class WordAdapter(BaseAdapter):
     """
 
     SUPPORTED_FORMAT = ".docx"
+
+    def __init__(self, config: dict[str, Any]):
+        super().__init__(config)
+        try:
+            self._transformation = WordTransformationConfig.model_validate(
+                config.get("transformation") or {}
+            )
+        except PydanticValidationError as exc:
+            raise ConfigurationError(
+                f"Invalid Word transformation configuration: {exc}"
+            ) from exc
 
     async def collect(self) -> Any:
         """
@@ -164,23 +177,23 @@ class WordAdapter(BaseAdapter):
         Returns:
             Dictionary with extracted text, metadata, and optional table data
         """
-        transformation_config = self.config.get("transformation", {})
+        transformation_config = self._transformation
         doc = raw_data
 
         # Extract text from paragraphs
-        paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-
-        # Optionally clean text
-        if transformation_config.get("strip_whitespace", True):
-            paragraphs = [p.strip() for p in paragraphs]
+        paragraphs_raw = [p.text for p in doc.paragraphs]
+        if transformation_config.strip_whitespace:
+            paragraphs = [text.strip() for text in paragraphs_raw if text and text.strip()]
+        else:
+            paragraphs = [text for text in paragraphs_raw if text]
 
         # Join paragraphs
-        separator = transformation_config.get("paragraph_separator", "\n")
+        separator = transformation_config.paragraph_separator
         full_text = separator.join(paragraphs)
 
         # Extract core properties (metadata)
         metadata = {}
-        if transformation_config.get("extract_metadata", True):
+        if transformation_config.extract_metadata:
             core_props = doc.core_properties
             metadata = {
                 "author": core_props.author,
@@ -195,7 +208,7 @@ class WordAdapter(BaseAdapter):
 
         # Extract tables
         tables_data = []
-        if transformation_config.get("extract_tables", False):
+        if transformation_config.extract_tables:
             for table in doc.tables:
                 table_rows = []
                 for row in table.rows:

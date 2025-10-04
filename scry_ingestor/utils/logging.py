@@ -4,27 +4,33 @@ import logging
 import sys
 from typing import Any
 
+from .config import get_settings
+
 # Define log format with structured context
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
-def setup_logger(name: str, level: str = "INFO") -> logging.Logger:
+def setup_logger(name: str, level: str | None = None) -> logging.Logger:
     """
     Configure and return a logger instance.
 
     Args:
         name: Logger name (typically __name__)
-        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    level: Optional log level override (DEBUG, INFO, WARNING, ERROR, CRITICAL)
 
     Returns:
         Configured logger instance
     """
+    settings = get_settings()
+    resolved_level = (level or settings.log_level).upper()
+    level_value = getattr(logging, resolved_level, logging.INFO)
+
     logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, level.upper()))
+    logger.setLevel(level_value)
 
     # Console handler
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(getattr(logging, level.upper()))
+    handler.setLevel(level_value)
     formatter = logging.Formatter(LOG_FORMAT)
     handler.setFormatter(formatter)
 

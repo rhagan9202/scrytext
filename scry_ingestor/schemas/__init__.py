@@ -6,6 +6,12 @@ from .payload import (
     IngestionResponse,
     ValidationResult,
 )
+from .transformations import (
+    BeautifulSoupTransformationConfig,
+    PDFTransformationConfig,
+    RESTTransformationConfig,
+    WordTransformationConfig,
+)
 
 __all__ = [
     "IngestionMetadata",
@@ -13,4 +19,8 @@ __all__ = [
     "IngestionRequest",
     "IngestionResponse",
     "ValidationResult",
+    "BeautifulSoupTransformationConfig",
+    "PDFTransformationConfig",
+    "RESTTransformationConfig",
+    "WordTransformationConfig",
 ]

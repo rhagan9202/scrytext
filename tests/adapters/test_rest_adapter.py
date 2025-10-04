@@ -7,7 +7,7 @@ import httpx
 import pytest
 
 from scry_ingestor.adapters.rest_adapter import RESTAdapter
-from scry_ingestor.exceptions import CollectionError, TransformationError
+from scry_ingestor.exceptions import CollectionError, ConfigurationError, TransformationError
 
 
 def build_transport(
@@ -148,3 +148,14 @@ async def test_process_full_pipeline(base_config: dict[str, Any]) -> None:
     assert result.data["body"] == payload
     assert result.metadata.adapter_type == "RESTAdapter"
     assert result.validation.is_valid is True
+
+
+def test_invalid_response_format_raises_configuration_error(
+    base_config: dict[str, Any]
+) -> None:
+    """Unsupported response formats should be caught upon adapter creation."""
+
+    base_config["transformation"] = {"response_format": "xml"}
+
+    with pytest.raises(ConfigurationError):
+        RESTAdapter(base_config)

@@ -6,7 +6,7 @@ import httpx
 import pytest
 
 from scry_ingestor.adapters.beautifulsoup_adapter import BeautifulSoupAdapter
-from scry_ingestor.exceptions import CollectionError, TransformationError
+from scry_ingestor.exceptions import CollectionError, ConfigurationError
 
 
 def build_transport(
@@ -138,18 +138,17 @@ async def test_transform_extracts_selectors(base_config: dict[str, Any]) -> None
 
 
 @pytest.mark.asyncio
-async def test_transform_invalid_selector_type(base_config: dict[str, Any]) -> None:
-    """Non-string selectors should raise TransformationError."""
+async def test_invalid_selector_type_raises_configuration_error(
+    base_config: dict[str, Any]
+) -> None:
+    """Non-string selectors should be rejected during configuration."""
 
     html = "<html><body><article><h1>Headline</h1></article></body></html>"
     base_config["_transport"] = build_transport(html)
     base_config["transformation"]["selectors"] = {"headlines": ["article h1"]}
 
-    adapter = BeautifulSoupAdapter(base_config)
-    raw = await adapter.collect()
-
-    with pytest.raises(TransformationError):
-        await adapter.transform(raw)
+    with pytest.raises(ConfigurationError):
+        BeautifulSoupAdapter(base_config)
 
 
 @pytest.mark.asyncio

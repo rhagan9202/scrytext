@@ -3,7 +3,7 @@
 import pytest
 
 from scry_ingestor.adapters.word_adapter import WordAdapter
-from scry_ingestor.exceptions import CollectionError
+from scry_ingestor.exceptions import CollectionError, ConfigurationError
 
 
 @pytest.fixture
@@ -297,6 +297,16 @@ class TestWordAdapter:
 
         with pytest.raises(CollectionError, match="max_bytes"):
             await adapter.collect()
+
+    def test_invalid_transformation_config_raises_configuration_error(
+        self, sample_word_config
+    ) -> None:
+        """Invalid transformation options should be rejected eagerly."""
+
+        sample_word_config["transformation"] = {"paragraph_separator": ""}
+
+        with pytest.raises(ConfigurationError):
+            WordAdapter(sample_word_config)
 
     @pytest.mark.asyncio
     async def test_collect_with_invalid_read_options_logs_warning(
