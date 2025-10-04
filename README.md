@@ -121,6 +121,10 @@ config = {
     "source_type": "file",
     "path": "/path/to/data.json",
     "use_cloud_processing": False,
+  "read_options": {
+    "chunk_size": 64 * 1024,  # Stream 64KB per read
+    "max_bytes": 5 * 1024 * 1024,  # Fail fast if file exceeds 5MB
+  },
 }
 
 # Create adapter and process data
@@ -144,6 +148,10 @@ config = {
     "source_type": "file",
     "path": "/path/to/data.csv",
     "use_cloud_processing": False,
+  "read_options": {
+    "chunk_size": 128 * 1024,
+    "max_bytes": 50 * 1024 * 1024,
+  },
 }
 
 # Create adapter and process data
@@ -168,6 +176,10 @@ config = {
     "path": "/path/to/data.xlsx",
     "sheet_name": "Sheet1",  # Or use 0 for first sheet
     "use_cloud_processing": False,
+  "read_options": {
+    "chunk_size": 512 * 1024,
+    "max_bytes": 75 * 1024 * 1024,
+  },
 }
 
 # Create adapter and process data
@@ -190,6 +202,10 @@ config = {
     "source_type": "file",
     "path": "/path/to/document.docx",  # Must be .docx format
     "use_cloud_processing": False,
+  "read_options": {
+    "chunk_size": 512 * 1024,
+    "max_bytes": 25 * 1024 * 1024,
+  },
     "transformation": {
         "extract_metadata": True,  # Extract author, title, etc.
         "extract_tables": True,  # Extract tables as structured data
@@ -226,6 +242,10 @@ config = {
     "source_type": "file",
     "path": "/path/to/document.pdf",
     "use_cloud_processing": False,
+  "read_options": {
+    "chunk_size": 1024 * 1024,
+    "max_bytes": 150 * 1024 * 1024,
+  },
     "transformation": {
         "extract_metadata": True,  # Extract author, title, dates, page count
         "extract_tables": True,  # Extract tables as structured data
@@ -398,12 +418,20 @@ tests/
 ```yaml
 # config/csv_adapter.yaml - Default settings
 use_cloud_processing: false
+read_options:
+  chunk_size: 1048576  # Stream 1MB at a time from disk
+  max_bytes: null      # Set to guard against unexpectedly large files
+  encoding: "utf-8"
+  errors: "strict"
 csv_options:
   delimiter: ","
-  encoding: "utf-8"
+  skip_blank_lines: true
+  header: 0
 validation:
   min_rows: 1
 ```
+
+`read_options` apply to every file-based adapter (JSON, CSV, Excel, Word, PDF) so you can stream uploads in predictable chunks and fail fast when a payload exceeds safety limits. Override them per request to tighten limits for user uploads or expand limits for trusted batch jobs.
 
 **File paths and data sources are provided at runtime** via API or code:
 

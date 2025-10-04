@@ -87,6 +87,7 @@ class TestPDFAdapter:
             assert "pdfplumber_doc" in raw_data
             assert "pymupdf_doc" in raw_data
             assert "path" in raw_data
+            assert raw_data["byte_size"] > 0
 
             # Verify documents are valid
             assert raw_data["pdfplumber_doc"] is not None
@@ -104,6 +105,29 @@ class TestPDFAdapter:
         adapter = PDFAdapter(config)
 
         with pytest.raises(CollectionError, match="File not found"):
+            await adapter.collect()
+
+    @pytest.mark.asyncio
+    async def test_collect_with_chunked_read_options(self, sample_pdf_config):
+        """Ensure chunked read options still load PDF document."""
+
+        config = {**sample_pdf_config}
+        config["read_options"] = {"chunk_size": 512_000}
+
+        adapter = PDFAdapter(config)
+        async with manage_pdf_resources(adapter) as raw_data:
+            assert raw_data["byte_size"] > 0
+
+    @pytest.mark.asyncio
+    async def test_collect_respects_max_bytes_limit(self, sample_pdf_config):
+        """Chunked reader should guard against oversized PDF files."""
+
+        config = {**sample_pdf_config}
+        config["read_options"] = {"max_bytes": 256}
+
+        adapter = PDFAdapter(config)
+
+        with pytest.raises(CollectionError, match="max_bytes"):
             await adapter.collect()
 
     @pytest.mark.asyncio

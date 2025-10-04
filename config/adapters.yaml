@@ -28,6 +28,9 @@ examples:
     source_type: "file"
     path: "/data/sample.csv"  # Runtime path
     use_cloud_processing: false
+    read_options:
+      chunk_size: 65536  # 64KB chunks for steady memory usage
+      max_bytes: 52428800  # 50MB safety limit
 
   # Excel from file
   excel_file:
@@ -37,6 +40,9 @@ examples:
     path: "/data/sample.xlsx"  # Runtime path
     sheet_name: "Sheet1"  # Specify sheet at runtime
     use_cloud_processing: false
+    read_options:
+      chunk_size: 1048576  # 1MB chunks
+      max_bytes: 104857600  # 100MB guardrail
 
   # REST API request
   rest_api:

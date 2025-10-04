@@ -118,3 +118,31 @@ class TestCSVAdapter:
         assert payload.data["age"].dtype in ["int64", "float64"]
         assert payload.data["salary"].dtype in ["int64", "float64"]
         assert payload.data["age"].mean() > 0
+
+    @pytest.mark.asyncio
+    async def test_collect_with_chunked_read_options(self, sample_csv_config):
+        """Ensure chunked read options still load full CSV content."""
+
+        config = {**sample_csv_config}
+        config["read_options"] = {
+            "chunk_size": 16,
+            "encoding": "utf-8",
+        }
+
+        adapter = CSVAdapter(config)
+        raw_data = await adapter.collect()
+
+        assert isinstance(raw_data, pd.DataFrame)
+        assert len(raw_data) == 5
+
+    @pytest.mark.asyncio
+    async def test_collect_respects_max_bytes_limit(self, sample_csv_config):
+        """Chunked reader should guard against oversized CSV files."""
+
+        config = {**sample_csv_config}
+        config["read_options"] = {"max_bytes": 32}
+
+        adapter = CSVAdapter(config)
+
+        with pytest.raises(CollectionError, match="max_bytes"):
+            await adapter.collect()

@@ -5,6 +5,11 @@
 # Default processing mode
 use_cloud_processing: false
 
+# Disk read settings for large files
+read_options:
+  chunk_size: 1048576  # 1MB chunks by default
+  max_bytes: null  # Optional upper bound to guard against oversized files
+
 # Default sheet selection (0 for first sheet, or sheet name)
 default_sheet: 0
 

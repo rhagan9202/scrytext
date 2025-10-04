@@ -9,6 +9,13 @@ use_cloud_processing: false
 json_options:
   strict: true  # Strict JSON parsing
   flatten: false  # Flatten nested structures
+
+# Disk read settings for large files
+read_options:
+  chunk_size: 1048576  # 1MB default chunk size for streaming reads
+  max_bytes: null  # Optional upper bound to prevent oversized payloads
+  encoding: "utf-8"
+  errors: "strict"
   
 # Data validation rules
 validation:

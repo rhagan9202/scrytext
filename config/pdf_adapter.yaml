@@ -18,6 +18,11 @@
 # Processing mode
 use_cloud_processing: false
 
+# Disk read settings for large files
+read_options:
+  chunk_size: 2097152  # 2MB chunks to balance throughput and memory
+  max_bytes: null  # Optional upper bound to guard against oversized PDFs
+
 # Validation rules
 validation:
   min_pages: 0  # Minimum number of pages required

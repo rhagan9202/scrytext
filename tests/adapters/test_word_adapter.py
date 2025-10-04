@@ -272,3 +272,28 @@ class TestWordAdapter:
         assert "Unsupported file type" in error_message
         assert ".doc" in error_message
         assert "convert" in error_message.lower()
+
+    @pytest.mark.asyncio
+    async def test_collect_with_chunked_read_options(self, sample_word_config):
+        """Ensure chunked read options still load Word document."""
+
+        config = {**sample_word_config}
+        config["read_options"] = {"chunk_size": 256}
+
+        adapter = WordAdapter(config)
+        raw_data = await adapter.collect()
+
+        assert raw_data is not None
+        assert len(raw_data.paragraphs) > 0
+
+    @pytest.mark.asyncio
+    async def test_collect_respects_max_bytes_limit(self, sample_word_config):
+        """Chunked reader should guard against oversized Word files."""
+
+        config = {**sample_word_config}
+        config["read_options"] = {"max_bytes": 128}
+
+        adapter = WordAdapter(config)
+
+        with pytest.raises(CollectionError, match="max_bytes"):
+            await adapter.collect()

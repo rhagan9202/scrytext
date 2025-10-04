@@ -5,10 +5,16 @@
 # Default processing mode
 use_cloud_processing: false
 
+# Disk read settings for large files
+read_options:
+  chunk_size: 1048576  # 1MB chunks by default
+  max_bytes: null  # Optional upper bound to guard against oversized files
+  encoding: "utf-8"
+  errors: "strict"
+
 # CSV parsing options (pandas read_csv parameters)
 csv_options:
   delimiter: ","
-  encoding: "utf-8"
   skip_blank_lines: true
   skip_rows: 0
   header: 0  # Row number to use as column names

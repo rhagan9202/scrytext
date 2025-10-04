@@ -1,5 +1,6 @@
 """Unstructured adapter for Word documents (.docx format only)."""
 
+import io
 from pathlib import Path
 from typing import Any
 
@@ -7,6 +8,7 @@ from docx import Document as DocxDocument
 
 from ..exceptions import CollectionError
 from ..schemas.payload import ValidationResult
+from ..utils.file_readers import read_binary_file, resolve_binary_read_options
 from .base import BaseAdapter
 
 
@@ -59,15 +61,27 @@ class WordAdapter(BaseAdapter):
                         f"For .doc files, please convert to .docx format first."
                     )
 
-                return await self._run_in_thread(DocxDocument, file_path)
+                chunk_size, max_bytes = resolve_binary_read_options(
+                    self.config.get("read_options")
+                )
+                data_bytes = await self._run_in_thread(
+                    read_binary_file,
+                    file_path,
+                    chunk_size=chunk_size,
+                    max_bytes=max_bytes,
+                )
+                buffer = io.BytesIO(data_bytes)
+                return await self._run_in_thread(DocxDocument, buffer)
 
             else:
                 raise CollectionError(f"Unsupported source type: {source_type}")
 
+        except CollectionError:
+            raise
         except OSError as e:
             raise CollectionError(f"Failed to read Word document: {e}")
         except Exception as e:
-            raise CollectionError(f"Failed to parse Word document: {e}")
+            raise CollectionError(f"Failed to parse Word document: {e}") from e
 
     async def validate(self, raw_data: Any) -> ValidationResult:
         """

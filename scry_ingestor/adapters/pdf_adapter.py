@@ -1,5 +1,6 @@
 """Unstructured adapter for PDF documents using state-of-the-art extraction."""
 
+import io
 from pathlib import Path
 from typing import Any
 
@@ -8,6 +9,7 @@ import pymupdf  # PyMuPDF (fitz)
 
 from ..exceptions import CollectionError
 from ..schemas.payload import ValidationResult
+from ..utils.file_readers import read_binary_file, resolve_binary_read_options
 from .base import BaseAdapter
 
 
@@ -70,14 +72,32 @@ class PDFAdapter(BaseAdapter):
                         f"Only .pdf files are supported."
                     )
 
+                chunk_size, max_bytes = resolve_binary_read_options(
+                    self.config.get("read_options")
+                )
+                data_bytes = await self._run_in_thread(
+                    read_binary_file,
+                    file_path,
+                    chunk_size=chunk_size,
+                    max_bytes=max_bytes,
+                )
+
                 # Open with both libraries for different strengths without blocking the loop
-                pdfplumber_doc = await self._run_in_thread(pdfplumber.open, file_path)
-                pymupdf_doc = await self._run_in_thread(pymupdf.open, file_path)
+                pdfplumber_doc = await self._run_in_thread(
+                    pdfplumber.open,
+                    io.BytesIO(data_bytes),
+                )
+                pymupdf_doc = await self._run_in_thread(
+                    pymupdf.open,
+                    stream=data_bytes,
+                    filetype="pdf",
+                )
 
                 return {
                     "pdfplumber_doc": pdfplumber_doc,
                     "pymupdf_doc": pymupdf_doc,
                     "path": str(path),
+                    "byte_size": len(data_bytes),
                 }
 
             else:
@@ -85,8 +105,10 @@ class PDFAdapter(BaseAdapter):
 
         except OSError as e:
             raise CollectionError(f"Failed to read PDF document: {e}")
+        except CollectionError:
+            raise
         except Exception as e:
-            raise CollectionError(f"Failed to parse PDF document: {e}")
+            raise CollectionError(f"Failed to parse PDF document: {e}") from e
 
     async def validate(self, raw_data: dict[str, Any]) -> ValidationResult:
         """

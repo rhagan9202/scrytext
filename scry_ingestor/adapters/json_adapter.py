@@ -3,9 +3,10 @@
 import json
 from typing import Any
 
-from .base import BaseAdapter
 from ..exceptions import CollectionError, TransformationError
 from ..schemas.payload import ValidationResult
+from ..utils.file_readers import read_text_file, resolve_text_read_options
+from .base import BaseAdapter
 
 
 class JSONAdapter(BaseAdapter):
@@ -35,7 +36,17 @@ class JSONAdapter(BaseAdapter):
                 file_path = self.config.get("path")
                 if not file_path:
                     raise CollectionError("File path not provided in config")
-                return await self._run_in_thread(self._read_file, file_path)
+                chunk_size, max_bytes, encoding, errors = resolve_text_read_options(
+                    self.config.get("read_options")
+                )
+                return await self._run_in_thread(
+                    read_text_file,
+                    file_path,
+                    chunk_size=chunk_size,
+                    max_bytes=max_bytes,
+                    encoding=encoding,
+                    errors=errors,
+                )
 
             elif source_type == "string":
                 raw_data = self.config.get("data")
@@ -115,16 +126,10 @@ class JSONAdapter(BaseAdapter):
     def _flatten_dict(self, d: dict[str, Any], parent_key: str = "") -> dict[str, Any]:
         """Helper to flatten nested dictionaries."""
         items: list[tuple[str, Any]] = []
-        for k, v in d.items():
-            new_key = f"{parent_key}.{k}" if parent_key else k
-            if isinstance(v, dict):
-                items.extend(self._flatten_dict(v, new_key).items())
+        for key, value in d.items():
+            new_key = f"{parent_key}.{key}" if parent_key else key
+            if isinstance(value, dict):
+                items.extend(self._flatten_dict(value, new_key).items())
             else:
-                items.append((new_key, v))
+                items.append((new_key, value))
         return dict(items)
-
-    @staticmethod
-    def _read_file(file_path: str) -> str:
-        """Synchronous helper to read file contents."""
-        with open(file_path) as file_handle:
-            return file_handle.read()

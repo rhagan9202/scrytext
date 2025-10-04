@@ -136,3 +136,28 @@ class TestExcelAdapter:
 
         assert isinstance(raw_data, pd.DataFrame)
         assert len(raw_data) > 0
+
+    @pytest.mark.asyncio
+    async def test_collect_with_chunked_read_options(self, sample_excel_config):
+        """Ensure chunked read options still load full Excel content."""
+
+        config = {**sample_excel_config}
+        config["read_options"] = {"chunk_size": 1024}
+
+        adapter = ExcelAdapter(config)
+        raw_data = await adapter.collect()
+
+        assert isinstance(raw_data, pd.DataFrame)
+        assert len(raw_data) == 5
+
+    @pytest.mark.asyncio
+    async def test_collect_respects_max_bytes_limit(self, sample_excel_config):
+        """Chunked reader should guard against oversized Excel files."""
+
+        config = {**sample_excel_config}
+        config["read_options"] = {"max_bytes": 512}
+
+        adapter = ExcelAdapter(config)
+
+        with pytest.raises(CollectionError, match="max_bytes"):
+            await adapter.collect()
