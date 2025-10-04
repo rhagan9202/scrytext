@@ -1,0 +1,19 @@
+# Word Adapter Configuration
+# This file contains default settings for the Word (.docx) adapter.
+# Actual file paths should be provided at runtime via API or code.
+
+# Processing mode
+use_cloud_processing: false
+
+# Validation rules
+validation:
+  min_paragraphs: 0  # Minimum number of paragraphs required
+  min_words: 0  # Minimum word count
+  allow_empty: false  # Whether empty documents are allowed
+
+# Transformation options
+transformation:
+  strip_whitespace: true  # Remove leading/trailing whitespace from paragraphs
+  paragraph_separator: "\n"  # How to join paragraphs (newline, double newline, etc.)
+  extract_metadata: true  # Extract document properties (author, title, etc.)
+  extract_tables: false  # Extract tables as structured data

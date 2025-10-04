@@ -179,6 +179,37 @@ print(payload.data)  # pandas DataFrame
 print(payload.data.columns.tolist())  # Column names
 ```
 
+### Using the WordAdapter
+
+```python
+from scry_ingestor.adapters.word_adapter import WordAdapter
+
+# Configure adapter
+config = {
+    "source_id": "my-word-source",
+    "source_type": "file",
+    "path": "/path/to/document.docx",
+    "use_cloud_processing": False,
+    "transformation": {
+        "extract_metadata": True,  # Extract author, title, etc.
+        "extract_tables": True,  # Extract tables as structured data
+        "strip_whitespace": True,
+        "paragraph_separator": "\n"
+    }
+}
+
+# Create adapter and process data
+adapter = WordAdapter(config)
+payload = await adapter.process()
+
+# Access the extracted text and metadata
+print(payload.data["text"])  # Full document text
+print(payload.data["metadata"]["author"])  # Document author
+print(payload.data["metadata"]["title"])  # Document title
+if "tables" in payload.data:
+    print(payload.data["tables"])  # Extracted tables
+```
+
 ### Using the REST API
 
 ```bash
@@ -222,6 +253,18 @@ curl -X POST http://localhost:8000/api/v1/ingest \
       "source_type": "file",
       "path": "/data/sample.xlsx",
       "sheet_name": "Products"
+    }
+  }'
+
+# Ingest Word document
+curl -X POST http://localhost:8000/api/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "adapter_type": "word",
+    "source_config": {
+      "source_id": "word-test",
+      "source_type": "file",
+      "path": "/data/document.docx"
     }
   }'
 ```

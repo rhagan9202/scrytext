@@ -42,10 +42,13 @@ def list_adapters() -> list[str]:
 
 
 # Import and register adapters here as they're created
-from .json_adapter import JSONAdapter
 from .csv_adapter import CSVAdapter
 from .excel_adapter import ExcelAdapter
+from .json_adapter import JSONAdapter
+from .word_adapter import WordAdapter
 
 register_adapter("json", JSONAdapter)
 register_adapter("csv", CSVAdapter)
+register_adapter("excel", ExcelAdapter)
+register_adapter("word", WordAdapter)
 register_adapter("excel", ExcelAdapter)

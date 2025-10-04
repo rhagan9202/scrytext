@@ -1,0 +1,231 @@
+"""Tests for WordAdapter using live test data."""
+
+import pytest
+
+from scry_ingestor.adapters.word_adapter import WordAdapter
+from scry_ingestor.exceptions import CollectionError
+
+
+@pytest.fixture
+def sample_word_config(tmp_path):
+    """Configuration for sample Word document."""
+    return {
+        "source_id": "test-word-source",
+        "source_type": "file",
+        "path": "tests/fixtures/sample.docx",
+        "use_cloud_processing": False,
+    }
+
+
+@pytest.fixture
+def word_config_with_validation(tmp_path):
+    """Configuration with strict validation rules."""
+    return {
+        "source_id": "test-word-strict",
+        "source_type": "file",
+        "path": "tests/fixtures/sample.docx",
+        "validation": {
+            "min_paragraphs": 3,
+            "min_words": 10,
+            "allow_empty": False,
+        },
+    }
+
+
+@pytest.fixture
+def word_config_with_tables(tmp_path):
+    """Configuration with table extraction enabled."""
+    return {
+        "source_id": "test-word-tables",
+        "source_type": "file",
+        "path": "tests/fixtures/sample.docx",
+        "transformation": {
+            "extract_tables": True,
+            "extract_metadata": True,
+        },
+    }
+
+
+class TestWordAdapter:
+    """Test suite for WordAdapter with live fixtures."""
+
+    @pytest.mark.asyncio
+    async def test_collect_from_file(self, sample_word_config):
+        """Test collecting data from Word document using live test data."""
+        adapter = WordAdapter(sample_word_config)
+        raw_data = await adapter.collect()
+
+        # Check that document was loaded
+        assert raw_data is not None
+        assert len(raw_data.paragraphs) > 0
+
+    @pytest.mark.asyncio
+    async def test_collect_missing_file(self):
+        """Test collecting from non-existent file raises error."""
+        config = {
+            "source_id": "test-missing",
+            "source_type": "file",
+            "path": "tests/fixtures/nonexistent.docx",
+        }
+        adapter = WordAdapter(config)
+
+        with pytest.raises(CollectionError, match="File not found"):
+            await adapter.collect()
+
+    @pytest.mark.asyncio
+    async def test_collect_invalid_file_type(self):
+        """Test collecting from non-docx file raises error."""
+        config = {
+            "source_id": "test-invalid",
+            "source_type": "file",
+            "path": "tests/fixtures/sample.json",  # Use existing JSON file
+        }
+        adapter = WordAdapter(config)
+
+        with pytest.raises(CollectionError, match="Invalid file type"):
+            await adapter.collect()
+
+    @pytest.mark.asyncio
+    async def test_validate_valid_document(self, sample_word_config):
+        """Test validation of valid Word document."""
+        adapter = WordAdapter(sample_word_config)
+        raw_data = await adapter.collect()
+        validation = await adapter.validate(raw_data)
+
+        assert validation.is_valid is True
+        assert len(validation.errors) == 0
+        assert "paragraph_count" in validation.metrics
+        assert validation.metrics["paragraph_count"] > 0
+        assert "word_count" in validation.metrics
+        assert validation.metrics["word_count"] > 0
+        assert "text_length_chars" in validation.metrics
+        assert "table_count" in validation.metrics
+
+    @pytest.mark.asyncio
+    async def test_validate_with_min_requirements(self, word_config_with_validation):
+        """Test validation with minimum requirements."""
+        adapter = WordAdapter(word_config_with_validation)
+        raw_data = await adapter.collect()
+        validation = await adapter.validate(raw_data)
+
+        # Should pass because sample document has enough content
+        assert validation.is_valid is True
+        assert validation.metrics["paragraph_count"] >= 3
+        assert validation.metrics["word_count"] >= 10
+
+    @pytest.mark.asyncio
+    async def test_validate_insufficient_paragraphs(self):
+        """Test validation fails with insufficient paragraphs."""
+        config = {
+            "source_id": "test-strict",
+            "source_type": "file",
+            "path": "tests/fixtures/sample.docx",
+            "validation": {
+                "min_paragraphs": 1000,  # Unrealistically high
+            },
+        }
+        adapter = WordAdapter(config)
+        raw_data = await adapter.collect()
+        validation = await adapter.validate(raw_data)
+
+        assert validation.is_valid is False
+        assert any("paragraphs" in error for error in validation.errors)
+
+    @pytest.mark.asyncio
+    async def test_transform_basic(self, sample_word_config):
+        """Test basic transformation of Word document."""
+        adapter = WordAdapter(sample_word_config)
+        raw_data = await adapter.collect()
+        transformed = await adapter.transform(raw_data)
+
+        assert isinstance(transformed, dict)
+        assert "text" in transformed
+        assert "paragraph_count" in transformed
+        assert "metadata" in transformed
+        assert len(transformed["text"]) > 0
+        assert transformed["paragraph_count"] > 0
+
+    @pytest.mark.asyncio
+    async def test_transform_with_metadata(self, sample_word_config):
+        """Test transformation extracts document metadata."""
+        sample_word_config["transformation"] = {"extract_metadata": True}
+        adapter = WordAdapter(sample_word_config)
+        raw_data = await adapter.collect()
+        transformed = await adapter.transform(raw_data)
+
+        assert "metadata" in transformed
+        metadata = transformed["metadata"]
+        assert "author" in metadata
+        assert metadata["author"] == "Test Author"
+        assert "title" in metadata
+        assert metadata["title"] == "Test Document"
+
+    @pytest.mark.asyncio
+    async def test_transform_with_tables(self, word_config_with_tables):
+        """Test transformation with table extraction."""
+        adapter = WordAdapter(word_config_with_tables)
+        raw_data = await adapter.collect()
+        transformed = await adapter.transform(raw_data)
+
+        assert "tables" in transformed
+        assert len(transformed["tables"]) > 0
+        # Check first table structure
+        first_table = transformed["tables"][0]
+        assert len(first_table) > 0  # Has rows
+        assert len(first_table[0]) > 0  # Has columns
+
+    @pytest.mark.asyncio
+    async def test_transform_paragraph_separator(self, sample_word_config):
+        """Test transformation with custom paragraph separator."""
+        sample_word_config["transformation"] = {
+            "paragraph_separator": "\n\n",
+        }
+        adapter = WordAdapter(sample_word_config)
+        raw_data = await adapter.collect()
+        transformed = await adapter.transform(raw_data)
+
+        # Check that double newlines are used
+        assert "\n\n" in transformed["text"]
+
+    @pytest.mark.asyncio
+    async def test_process_full_pipeline(self, sample_word_config):
+        """Test the complete ingestion pipeline with live data."""
+        adapter = WordAdapter(sample_word_config)
+        payload = await adapter.process()
+
+        # Check data
+        assert isinstance(payload.data, dict)
+        assert "text" in payload.data
+        assert len(payload.data["text"]) > 0
+
+        # Check metadata (access as attributes, not dict)
+        assert payload.metadata.source_id == "test-word-source"
+        assert payload.metadata.adapter_type == "WordAdapter"
+        assert payload.metadata.processing_mode == "local"
+        assert payload.metadata.processing_duration_ms >= 0
+
+        # Check validation
+        assert payload.validation.is_valid is True
+        assert len(payload.validation.errors) == 0
+
+    @pytest.mark.asyncio
+    async def test_process_with_correlation_id(self, sample_word_config):
+        """Test process pipeline includes correlation ID."""
+        sample_word_config["correlation_id"] = "test-correlation-123"
+        adapter = WordAdapter(sample_word_config)
+        payload = await adapter.process()
+
+        assert payload.metadata.correlation_id == "test-correlation-123"
+
+    @pytest.mark.asyncio
+    async def test_text_content_accuracy(self, sample_word_config):
+        """Test that extracted text matches expected content."""
+        adapter = WordAdapter(sample_word_config)
+        raw_data = await adapter.collect()
+        transformed = await adapter.transform(raw_data)
+
+        text = transformed["text"]
+        # Check for known content from sample document
+        assert "first paragraph" in text.lower()
+        assert "second paragraph" in text.lower()
+        assert "third paragraph" in text.lower()
