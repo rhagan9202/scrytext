@@ -215,6 +215,53 @@ if "tables" in payload.data:
 - Convert using LibreOffice: `libreoffice --headless --convert-to docx file.doc`
 - Convert using online tools: CloudConvert, Zamzar, or Google Docs
 
+### Using the PDFAdapter
+
+```python
+from scry_ingestor.adapters.pdf_adapter import PDFAdapter
+
+# Configure adapter (uses pdfplumber + pymupdf for best results)
+config = {
+    "source_id": "my-pdf-source",
+    "source_type": "file",
+    "path": "/path/to/document.pdf",
+    "use_cloud_processing": False,
+    "transformation": {
+        "extract_metadata": True,  # Extract author, title, dates, page count
+        "extract_tables": True,  # Extract tables as structured data
+        "extract_images": False,  # Extract image metadata (not raw images)
+        "layout_mode": False,  # Preserve layout in text extraction
+        "combine_pages": True,  # Combine all pages into full_text
+        "page_separator": "\n\n"
+    }
+}
+
+# Create adapter and process data
+adapter = PDFAdapter(config)
+payload = await adapter.process()
+
+# Access the extracted content
+print(payload.data["full_text"])  # All text combined
+print(payload.data["metadata"]["author"])  # Document author
+print(payload.data["metadata"]["page_count"])  # Number of pages
+print(payload.data["summary"]["total_tables"])  # Tables found
+
+# Access per-page data
+for page in payload.data["pages"]:
+    print(f"Page {page['page_number']}: {page['text'][:100]}...")
+    if "tables" in page:
+        print(f"  Found {len(page['tables'])} tables on this page")
+```
+
+**Features:**
+- Best-in-class table extraction using pdfplumber
+- High-performance text extraction
+- Comprehensive metadata (author, title, creator, dates)
+- Multi-page document support
+- Layout-aware text extraction option
+- Image detection and metadata
+- Per-page processing for large documents
+
 ### Using the REST API
 
 ```bash

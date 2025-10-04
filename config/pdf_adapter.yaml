@@ -1,0 +1,66 @@
+# PDF Adapter Configuration
+# This file contains default settings for the PDF adapter.
+# Actual file paths should be provided at runtime via API or code.
+
+# Supported format: .pdf (Portable Document Format) ONLY
+#
+# Extraction capabilities:
+# - Text extraction (layout-aware)
+# - Table extraction (automatic detection)
+# - Metadata extraction (author, title, dates, etc.)
+# - Image detection and metadata
+# - Multi-page document support
+#
+# Libraries used:
+# - pdfplumber: Best-in-class table extraction, layout-aware text
+# - pymupdf (PyMuPDF): High-performance, comprehensive metadata, OCR support
+
+# Processing mode
+use_cloud_processing: false
+
+# Validation rules
+validation:
+  min_pages: 0  # Minimum number of pages required
+  min_words: 0  # Minimum total word count across all pages
+  allow_empty: false  # Whether documents with no extractable text are allowed
+  require_tables: false  # Whether document must contain at least one table
+
+# Transformation options
+transformation:
+  # Text extraction
+  layout_mode: false  # Preserve document layout in text extraction (spaces, alignment)
+  combine_pages: true  # Combine all pages into single "full_text" field
+  page_separator: "\n\n"  # How to separate pages when combining (double newline)
+  
+  # Feature extraction
+  extract_metadata: true  # Extract document properties (author, title, dates, page count, etc.)
+  extract_tables: false  # Extract tables as structured data (2D arrays per page)
+  extract_images: false  # Extract image metadata (positions, dimensions - not raw image data)
+  
+  # Page range (optional) - process subset of pages
+  # page_range: [0, 10]  # Process first 10 pages only (0-indexed). Omit to process all pages.
+
+# OCR Settings (for scanned PDFs - requires additional setup)
+# Note: OCR requires pymupdf with Tesseract installation
+# See: https://pymupdf.readthedocs.io/en/latest/recipes-ocr.html
+ocr:
+  enabled: false  # Enable OCR for scanned documents
+  language: "eng"  # Tesseract language code (eng, spa, fra, deu, etc.)
+  # Additional languages can be specified as comma-separated: "eng,spa"
+
+# Performance tuning
+performance:
+  max_pages: null  # Maximum pages to process (null = no limit)
+  page_timeout: 30  # Maximum seconds per page before timeout (null = no limit)
+
+# Table extraction settings (when extract_tables: true)
+# See pdfplumber documentation for advanced table detection options
+# https://github.com/jsvine/pdfplumber#table-extraction
+table_settings:
+  vertical_strategy: "lines"  # "lines", "lines_strict", "text", or "explicit"
+  horizontal_strategy: "lines"  # "lines", "lines_strict", "text", or "explicit"
+  snap_tolerance: 3  # Snap parallel lines within N points
+  join_tolerance: 3  # Join line segments within N points
+  edge_min_length: 3  # Discard edges shorter than N points
+  min_words_vertical: 3  # Min words sharing alignment for text-based detection
+  min_words_horizontal: 1  # Min words sharing alignment for text-based detection
