@@ -1,0 +1,254 @@
+"""Adapter for interacting with RESTful web APIs."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping
+from typing import Any
+
+import httpx
+
+from ..exceptions import CollectionError, TransformationError, ValidationError
+from ..schemas.payload import ValidationResult
+from .base import BaseAdapter
+
+
+class RESTAdapter(BaseAdapter):
+    """Adapter that fetches data from HTTP APIs using httpx."""
+
+    SUPPORTED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE"}
+
+    async def collect(self) -> dict[str, Any]:
+        """Perform the HTTP request and return the raw response payload."""
+
+        method = (self.config.get("method") or "GET").upper()
+        if method not in self.SUPPORTED_METHODS:
+            raise CollectionError(f"Unsupported HTTP method: {method}")
+
+        endpoint = self.config.get("endpoint")
+        if not endpoint:
+            raise CollectionError("REST adapter requires an 'endpoint' URL in the config")
+
+        timeout = self.config.get("timeout", 30.0)
+        headers = self._ensure_dict(
+            self.config.get("headers"),
+            error_cls=CollectionError,
+            context="headers configuration",
+        )
+        params = self._ensure_dict(
+            self.config.get("query_params"),
+            error_cls=CollectionError,
+            context="query parameter configuration",
+        )
+        body = self.config.get("body")
+        response_format = self._response_format_hint()
+        client_kwargs: dict[str, Any] = {
+            "timeout": timeout,
+        }
+        base_url = self.config.get("base_url")
+        if base_url:
+            client_kwargs["base_url"] = base_url
+
+        transport = self.config.get("_transport")
+        if transport is not None:
+            client_kwargs["transport"] = transport
+
+        request_kwargs: dict[str, Any] = {
+            "headers": headers,
+            "params": params,
+        }
+
+        auth_config = self._ensure_dict(
+            self.config.get("auth"),
+            error_cls=CollectionError,
+            context="auth configuration",
+        )
+        auth = None
+        auth_type = str(auth_config.get("type", "none")).lower()
+        if auth_type == "basic":
+            username = auth_config.get("username")
+            password = auth_config.get("password")
+            if username is None or password is None:
+                raise CollectionError("Basic auth requires both username and password")
+            auth = (username, password)
+        elif auth_type == "bearer":
+            token = auth_config.get("token")
+            if not token:
+                raise CollectionError("Bearer auth requires a token")
+            headers.setdefault("Authorization", f"Bearer {token}")
+        elif auth_type not in ("none", ""):
+            raise CollectionError(f"Unsupported auth type: {auth_type}")
+
+        if auth is not None:
+            request_kwargs["auth"] = auth
+
+        if body is not None:
+            if isinstance(body, (dict, list)):
+                request_kwargs["json"] = body
+            else:
+                body_format = self.config.get("body_format", "auto").lower()
+                if body_format == "json" and isinstance(body, str):
+                    request_kwargs["json"] = json.loads(body)
+                else:
+                    request_kwargs["content"] = (
+                        body if isinstance(body, (bytes, bytearray)) else str(body)
+                    )
+
+        try:
+            async with httpx.AsyncClient(**client_kwargs) as client:
+                response = await client.request(method, endpoint, **request_kwargs)
+        except httpx.TimeoutException as exc:
+            raise CollectionError(f"HTTP request timed out after {timeout} seconds") from exc
+        except httpx.HTTPError as exc:
+            raise CollectionError(f"HTTP request failed: {exc}") from exc
+
+        await response.aread()
+
+        try:
+            elapsed_ms = int(response.elapsed.total_seconds() * 1000)
+        except (AttributeError, RuntimeError):
+            elapsed_ms = 0
+
+        return {
+            "status_code": response.status_code,
+            "headers": dict(response.headers),
+            "content": response.content,
+            "text": response.text,
+            "response_format_hint": response_format,
+            "elapsed_ms": elapsed_ms,
+            "url": str(response.request.url),
+            "request": {
+                "method": method,
+                "headers": dict(response.request.headers),
+                "params": params,
+                "body": request_kwargs.get("json", request_kwargs.get("content")),
+            },
+        }
+
+    async def validate(self, raw_data: dict[str, Any]) -> ValidationResult:
+        """Validate response status code and basic constraints."""
+
+        validation_cfg = self._ensure_dict(
+            self.config.get("validation"),
+            error_cls=ValidationError,
+            context="validation configuration",
+        )
+        expected_statuses = validation_cfg.get("expected_statuses", [200])
+        if isinstance(expected_statuses, int):
+            expected_statuses = [expected_statuses]
+
+        errors: list[str] = []
+        warnings: list[str] = []
+        metrics: dict[str, Any] = {
+            "status_code": raw_data["status_code"],
+            "elapsed_ms": raw_data["elapsed_ms"],
+            "content_length": len(raw_data["content"]),
+        }
+
+        if raw_data["status_code"] not in expected_statuses:
+            errors.append(
+                "Unexpected status code: "
+                f"{raw_data['status_code']} (expected {expected_statuses})"
+            )
+
+        min_length = validation_cfg.get("min_content_length")
+        if isinstance(min_length, int) and len(raw_data["content"]) < min_length:
+            errors.append(
+                f"Response body too small: {len(raw_data['content'])} bytes (< {min_length})"
+            )
+
+        max_length = validation_cfg.get("max_content_length")
+        if isinstance(max_length, int) and len(raw_data["content"]) > max_length:
+            warnings.append(
+                f"Response body large: {len(raw_data['content'])} bytes (> {max_length})"
+            )
+
+        required_headers = validation_cfg.get("required_headers") or []
+        missing_headers = [h for h in required_headers if h not in raw_data["headers"]]
+        if missing_headers:
+            errors.append(f"Missing required headers: {missing_headers}")
+
+        return ValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            metrics=metrics,
+        )
+
+    async def transform(self, raw_data: dict[str, Any]) -> dict[str, Any]:
+        """Transform the HTTP response content into structured data."""
+
+        transformation_cfg = self._ensure_dict(
+            self.config.get("transformation"),
+            error_cls=TransformationError,
+            context="transformation configuration",
+        )
+        preferred_format = transformation_cfg.get("response_format", "auto").lower()
+
+        body: Any
+        try:
+            body = self._parse_body(raw_data, preferred_format)
+        except ValueError as exc:
+            raise TransformationError(str(exc)) from exc
+
+        result: dict[str, Any] = {
+            "status_code": raw_data["status_code"],
+            "headers": raw_data["headers"],
+            "elapsed_ms": raw_data["elapsed_ms"],
+            "url": raw_data["url"],
+            "body": body,
+        }
+
+        request_info = raw_data.get("request", {})
+        if request_info:
+            result["request"] = request_info
+
+        return result
+
+    def _parse_body(self, raw_data: dict[str, Any], preferred_format: str) -> Any:
+        """Decode response content into the desired representation."""
+
+        content_type = (raw_data["headers"].get("content-type") or "").lower()
+        content = raw_data["content"]
+        text = raw_data["text"]
+
+        chosen_format = preferred_format
+        if preferred_format == "auto":
+            if "json" in content_type:
+                chosen_format = "json"
+            elif "text" in content_type or content_type == "":
+                chosen_format = "text"
+            else:
+                chosen_format = "bytes"
+
+        if chosen_format == "json":
+            try:
+                return json.loads(text)
+            except ValueError as exc:  # pragma: no cover - defensive branch
+                raise ValueError("Failed to parse JSON response body") from exc
+        if chosen_format == "text":
+            return text
+        if chosen_format == "bytes":
+            return content
+
+        raise ValueError(f"Unsupported response_format: {preferred_format}")
+
+    def _ensure_dict(
+        self,
+        value: Mapping[str, Any] | None,
+        *,
+        error_cls: type[Exception] = ValueError,
+        context: str = "mapping",
+    ) -> dict[str, Any]:
+        """Return a shallow copy of mapping values, defaulting to empty dict."""
+
+        if value is None:
+            return {}
+        if isinstance(value, Mapping):
+            return dict(value)
+        raise error_cls(f"Expected mapping for {context}")
+
+    def _response_format_hint(self) -> str:
+        """Return the preferred response format hint from config."""
+        transformation_cfg = self.config.get("transformation") or {}
+        return str(transformation_cfg.get("response_format", "auto")).lower()

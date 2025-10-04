@@ -2,10 +2,12 @@
 
 from ..exceptions import AdapterNotFoundError
 from .base import BaseAdapter
+from .beautifulsoup_adapter import BeautifulSoupAdapter
 from .csv_adapter import CSVAdapter
 from .excel_adapter import ExcelAdapter
 from .json_adapter import JSONAdapter
 from .pdf_adapter import PDFAdapter
+from .rest_adapter import RESTAdapter
 from .word_adapter import WordAdapter
 
 # Adapter registry - register new adapters here
@@ -55,3 +57,5 @@ register_adapter("csv", CSVAdapter)
 register_adapter("excel", ExcelAdapter)
 register_adapter("word", WordAdapter)
 register_adapter("pdf", PDFAdapter)
+register_adapter("rest", RESTAdapter)
+register_adapter("soup", BeautifulSoupAdapter)

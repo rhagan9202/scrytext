@@ -1,0 +1,31 @@
+# BeautifulSoup Adapter Configuration
+# Default settings for crawling HTML content and extracting structured data
+
+# Processing mode
+use_cloud_processing: false
+
+# HTTP request settings
+url: null
+method: "GET"
+timeout: 30  # seconds
+headers: {}
+query_params: {}
+parser: "html.parser"  # Options: html.parser, lxml, html5lib
+
+# Validation options
+validation:
+  expected_statuses: [200]
+  min_content_length: 128
+  max_content_length: 2097152  # 2 MB soft warning
+  required_selectors: []  # CSS selectors that must be present in the HTML
+
+# Transformation options
+transformation:
+  include_text: true
+  text_separator: "\n"
+  text_strip: true
+  max_text_chars: null
+  include_links: true
+  include_metadata: true
+  include_raw: false
+  selectors: {}

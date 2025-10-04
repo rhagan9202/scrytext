@@ -37,3 +37,32 @@ examples:
     path: "/data/sample.xlsx"  # Runtime path
     sheet_name: "Sheet1"  # Specify sheet at runtime
     use_cloud_processing: false
+
+  # REST API request
+  rest_api:
+    type: "rest"
+    source_id: "example-rest-api"
+    endpoint: "https://api.example.com/v1/resources"
+    method: "GET"
+    query_params:
+      include: "summary"
+    headers:
+      Authorization: "Bearer ${API_TOKEN}"
+    validation:
+      expected_statuses: [200, 202]
+    transformation:
+      response_format: "json"
+
+  # Web crawl using BeautifulSoup
+  soup_crawl:
+    type: "soup"
+    source_id: "example-web-crawl"
+    url: "https://example.com/articles"
+    validation:
+      required_selectors:
+        - "article h1"
+    transformation:
+      selectors:
+        headlines: "article h1"
+        summaries: "article p.summary"
+      include_raw: false

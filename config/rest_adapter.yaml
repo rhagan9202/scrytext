@@ -1,0 +1,31 @@
+# REST Adapter Configuration
+# Default settings and options for interacting with HTTP APIs
+
+# Processing mode
+use_cloud_processing: false
+
+# HTTP request settings
+method: "GET"
+timeout: 30  # seconds
+headers: {}
+query_params: {}
+body: null
+body_format: auto  # auto | json | text | bytes
+
+# Authentication options (extend as needed)
+auth:
+  type: none  # none | basic | bearer
+  username: null
+  password: null
+  token: null
+
+# Validation rules
+validation:
+  expected_statuses: [200]
+  min_content_length: null
+  max_content_length: 5242880  # 5 MB soft alert
+  required_headers: []
+
+# Transformation options
+transformation:
+  response_format: auto  # auto | json | text | bytes
