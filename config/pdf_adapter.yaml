@@ -31,6 +31,7 @@ transformation:
   layout_mode: false  # Preserve document layout in text extraction (spaces, alignment)
   combine_pages: true  # Combine all pages into single "full_text" field
   page_separator: "\n\n"  # How to separate pages when combining (double newline)
+  max_text_chars_per_page: null  # Optional int limit to trim text payload per page (null = no trim)
   
   # Feature extraction
   extract_metadata: true  # Extract document properties (author, title, dates, page count, etc.)
@@ -41,8 +42,17 @@ transformation:
   # page_range: [0, 10]  # Process first 10 pages only (0-indexed). Omit to process all pages.
 
 # OCR Settings (for scanned PDFs - requires additional setup)
-# Note: OCR requires pymupdf with Tesseract installation
-# See: https://pymupdf.readthedocs.io/en/latest/recipes-ocr.html
+# Requirements:
+#   1. Install Tesseract on the host / container
+#      - Debian / Ubuntu: sudo apt install tesseract-ocr tesseract-ocr-eng
+#      - macOS (Homebrew): brew install tesseract
+#   2. Optional language packs (e.g., tesseract-ocr-spa) for non-English scans
+#   3. Ensure the `tesseract` binary is available on PATH for the runtime user
+#   4. Consider enabling OCR only for scanned documents; it adds processing time
+# Reference: https://pymupdf.readthedocs.io/en/latest/recipes-ocr.html
+# Failure modes:
+#   - If Tesseract is missing, enabling OCR will raise runtime errors
+#   - OCR output increases payload size; large scans may require payload trimming
 ocr:
   enabled: false  # Enable OCR for scanned documents
   language: "eng"  # Tesseract language code (eng, spa, fra, deu, etc.)
@@ -53,9 +63,16 @@ performance:
   max_pages: null  # Maximum pages to process (null = no limit)
   page_timeout: 30  # Maximum seconds per page before timeout (null = no limit)
 
-# Table extraction settings (when extract_tables: true)
-# See pdfplumber documentation for advanced table detection options
-# https://github.com/jsvine/pdfplumber#table-extraction
+# Table extraction settings (used when transformation.extract_tables = true)
+# Tips:
+#   - Choose strategies based on table structure:
+#       * "lines" / "lines_strict" for ruled tables with clear borders
+#       * "text" for whitespace-aligned tables without lines
+#       * "explicit" when you provide custom ruling lines
+#   - Increase snap_tolerance / join_tolerance for slightly skewed scans
+#   - Lower tolerances to avoid merging nearby tables or captions
+#   - Limit page_range in transformation config to table-heavy sections for faster runs
+# Reference: https://github.com/jsvine/pdfplumber#table-extraction
 table_settings:
   vertical_strategy: "lines"  # "lines", "lines_strict", "text", or "explicit"
   horizontal_strategy: "lines"  # "lines", "lines_strict", "text", or "explicit"

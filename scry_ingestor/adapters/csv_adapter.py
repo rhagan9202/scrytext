@@ -1,10 +1,10 @@
 """Adapter for collecting and processing CSV data."""
-import pandas as pd
-from typing import Any
 
-from .base import BaseAdapter
-from ..exceptions import CollectionError, TransformationError, ValidationError
+import pandas as pd
+from ..exceptions import CollectionError
 from ..schemas.payload import ValidationResult
+from .base import BaseAdapter
+
 
 class CSVAdapter(BaseAdapter):
     """Adapter for CSV files using pandas."""
@@ -16,13 +16,15 @@ class CSVAdapter(BaseAdapter):
                 file_path = self.config.get("path")
                 if not file_path:
                     raise CollectionError("CSV file path not provided in config")
-                return pd.read_csv(file_path)
+                return await self._run_in_thread(pd.read_csv, file_path)
             elif source_type == "string":
-                import io
                 data = self.config.get("data")
                 if not data:
                     raise CollectionError("CSV string not provided in config")
-                return pd.read_csv(io.StringIO(data))
+                import io
+
+                buffer = io.StringIO(data)
+                return await self._run_in_thread(pd.read_csv, buffer)
             else:
                 raise CollectionError(f"Unsupported source type: {source_type}")
         except Exception as e:
@@ -34,7 +36,12 @@ class CSVAdapter(BaseAdapter):
         metrics = {"row_count": len(raw_data), "column_count": len(raw_data.columns)}
         if raw_data.empty:
             errors.append("CSV file is empty")
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings, metrics=metrics)
+        return ValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            metrics=metrics,
+        )
 
     async def transform(self, raw_data: pd.DataFrame) -> pd.DataFrame:
         # Optionally clean or normalize data here

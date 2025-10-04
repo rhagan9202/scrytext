@@ -4,7 +4,7 @@ import json
 from typing import Any
 
 from .base import BaseAdapter
-from ..exceptions import CollectionError, TransformationError, ValidationError
+from ..exceptions import CollectionError, TransformationError
 from ..schemas.payload import ValidationResult
 
 
@@ -35,8 +35,7 @@ class JSONAdapter(BaseAdapter):
                 file_path = self.config.get("path")
                 if not file_path:
                     raise CollectionError("File path not provided in config")
-                with open(file_path) as f:
-                    return f.read()
+                return await self._run_in_thread(self._read_file, file_path)
 
             elif source_type == "string":
                 raw_data = self.config.get("data")
@@ -47,7 +46,7 @@ class JSONAdapter(BaseAdapter):
             else:
                 raise CollectionError(f"Unsupported source type: {source_type}")
 
-        except (IOError, OSError) as e:
+        except OSError as e:
             raise CollectionError(f"Failed to collect JSON data: {e}")
 
     async def validate(self, raw_data: str) -> ValidationResult:
@@ -123,3 +122,9 @@ class JSONAdapter(BaseAdapter):
             else:
                 items.append((new_key, v))
         return dict(items)
+
+    @staticmethod
+    def _read_file(file_path: str) -> str:
+        """Synchronous helper to read file contents."""
+        with open(file_path) as file_handle:
+            return file_handle.read()

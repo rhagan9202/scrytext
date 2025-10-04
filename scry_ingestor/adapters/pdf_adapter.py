@@ -70,9 +70,9 @@ class PDFAdapter(BaseAdapter):
                         f"Only .pdf files are supported."
                     )
 
-                # Open with both libraries for different strengths
-                pdfplumber_doc = pdfplumber.open(file_path)
-                pymupdf_doc = pymupdf.open(file_path)
+                # Open with both libraries for different strengths without blocking the loop
+                pdfplumber_doc = await self._run_in_thread(pdfplumber.open, file_path)
+                pymupdf_doc = await self._run_in_thread(pymupdf.open, file_path)
 
                 return {
                     "pdfplumber_doc": pdfplumber_doc,
@@ -98,9 +98,14 @@ class PDFAdapter(BaseAdapter):
         Returns:
             ValidationResult with quality metrics
         """
-        errors = []
-        warnings = []
-        metrics = {}
+
+        return await self._run_in_thread(self._validate_sync, raw_data)
+
+    def _validate_sync(self, raw_data: dict[str, Any]) -> ValidationResult:
+        """Synchronous validation logic executed in a worker thread."""
+        errors: list[str] = []
+        warnings: list[str] = []
+        metrics: dict[str, Any] = {}
 
         try:
             pdfplumber_doc = raw_data["pdfplumber_doc"]
@@ -139,8 +144,8 @@ class PDFAdapter(BaseAdapter):
                     if page.images:
                         has_images = True
 
-                except Exception as e:
-                    warnings.append(f"Error processing page {page_num}: {str(e)}")
+                except Exception as exc:
+                    warnings.append(f"Error processing page {page_num}: {str(exc)}")
 
             metrics["total_text_chars"] = total_chars
             metrics["total_words"] = total_words
@@ -157,9 +162,10 @@ class PDFAdapter(BaseAdapter):
                 metrics["has_metadata"] = False
 
             # Validation rules from config
-            min_words = self.config.get("validation", {}).get("min_words", 0)
-            allow_empty = self.config.get("validation", {}).get("allow_empty", False)
-            require_tables = self.config.get("validation", {}).get("require_tables", False)
+            validation_config = self.config.get("validation", {})
+            min_words = validation_config.get("min_words", 0)
+            allow_empty = validation_config.get("allow_empty", False)
+            require_tables = validation_config.get("require_tables", False)
 
             # Check for empty document
             if total_chars == 0 and not allow_empty:
@@ -187,8 +193,8 @@ class PDFAdapter(BaseAdapter):
 
             is_valid = len(errors) == 0
 
-        except Exception as e:
-            errors.append(f"Validation error: {str(e)}")
+        except Exception as exc:
+            errors.append(f"Validation error: {str(exc)}")
             is_valid = False
 
         return ValidationResult(
@@ -208,11 +214,16 @@ class PDFAdapter(BaseAdapter):
         Returns:
             Dictionary with extracted text, metadata, tables, and images
         """
+
+        return await self._run_in_thread(self._transform_sync, raw_data)
+
+    def _transform_sync(self, raw_data: dict[str, Any]) -> dict[str, Any]:
+        """Synchronous transformation logic executed in a worker thread."""
         transformation_config = self.config.get("transformation", {})
         pdfplumber_doc = raw_data["pdfplumber_doc"]
         pymupdf_doc = raw_data["pymupdf_doc"]
 
-        result = {
+        result: dict[str, Any] = {
             "pages": [],
             "metadata": {},
             "summary": {},
@@ -240,6 +251,12 @@ class PDFAdapter(BaseAdapter):
         extract_images = transformation_config.get("extract_images", False)
         layout_mode = transformation_config.get("layout_mode", False)
         page_range = transformation_config.get("page_range")  # e.g., [0, 5] for first 5 pages
+        max_text_chars_per_page = transformation_config.get("max_text_chars_per_page")
+        text_trim_limit = (
+            max_text_chars_per_page
+            if isinstance(max_text_chars_per_page, int) and max_text_chars_per_page > 0
+            else None
+        )
 
         pages_to_process = pdfplumber_doc.pages
         if page_range:
@@ -249,9 +266,11 @@ class PDFAdapter(BaseAdapter):
         total_text_length = 0
         total_tables = 0
         total_images = 0
+        trimmed_pages = 0
+        trimmed_characters = 0
 
         for page_num, page in enumerate(pages_to_process, 1):
-            page_data = {
+            page_data: dict[str, Any] = {
                 "page_number": page_num,
                 "text": "",
                 "width": page.width,
@@ -259,19 +278,34 @@ class PDFAdapter(BaseAdapter):
             }
 
             # Extract text with pdfplumber (better layout handling)
+            page_text = ""
+            trimmed_amount = 0
             try:
                 if layout_mode:
                     # Preserve layout
-                    page_data["text"] = page.extract_text(layout=True) or ""
+                    page_text = page.extract_text(layout=True) or ""
                 else:
                     # Simple text extraction
-                    page_data["text"] = page.extract_text() or ""
+                    page_text = page.extract_text() or ""
 
-                total_text_length += len(page_data["text"])
+            except Exception as exc:
+                page_data["error"] = f"Text extraction failed: {str(exc)}"
+                page_text = ""
 
-            except Exception as e:
-                page_data["text"] = ""
-                page_data["error"] = f"Text extraction failed: {str(e)}"
+            original_length = len(page_text)
+            if text_trim_limit and original_length > text_trim_limit:
+                trimmed_amount = original_length - text_trim_limit
+                page_text = page_text[:text_trim_limit]
+                page_data["text_truncated"] = True
+                page_data["text_original_length"] = original_length
+                page_data["text_trimmed_characters"] = trimmed_amount
+                trimmed_pages += 1
+                trimmed_characters += trimmed_amount
+            else:
+                page_data["text_truncated"] = False
+
+            page_data["text"] = page_text
+            total_text_length += len(page_text)
 
             # Extract tables with pdfplumber (best-in-class)
             if extract_tables:
@@ -280,8 +314,8 @@ class PDFAdapter(BaseAdapter):
                     if tables:
                         page_data["tables"] = tables
                         total_tables += len(tables)
-                except Exception as e:
-                    page_data["tables_error"] = f"Table extraction failed: {str(e)}"
+                except Exception as exc:
+                    page_data["tables_error"] = f"Table extraction failed: {str(exc)}"
 
             # Extract image metadata (not raw image data)
             if extract_images:
@@ -300,8 +334,8 @@ class PDFAdapter(BaseAdapter):
                             for img in images
                         ]
                         total_images += len(images)
-                except Exception as e:
-                    page_data["images_error"] = f"Image detection failed: {str(e)}"
+                except Exception as exc:
+                    page_data["images_error"] = f"Image detection failed: {str(exc)}"
 
             result["pages"].append(page_data)
 
@@ -314,6 +348,8 @@ class PDFAdapter(BaseAdapter):
             "average_text_per_page": (
                 total_text_length / len(pages_to_process) if pages_to_process else 0
             ),
+            "trimmed_pages": trimmed_pages,
+            "trimmed_characters": trimmed_characters,
         }
 
         # Optionally combine all page text

@@ -1,10 +1,15 @@
 """Base adapter abstract class for all data source adapters."""
 
 from abc import ABC, abstractmethod
+import asyncio
+from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, TypeVar
 
 from ..schemas.payload import IngestionMetadata, IngestionPayload, ValidationResult
+
+
+T = TypeVar("T")
 
 
 class BaseAdapter(ABC):
@@ -25,6 +30,21 @@ class BaseAdapter(ABC):
         self.config = config
         self.source_id = config.get("source_id", "unknown")
         self.use_cloud_processing = config.get("use_cloud_processing", False)
+
+    async def _run_in_thread(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+        """
+        Execute a blocking function in a thread to avoid blocking the event loop.
+
+        Args:
+            func: Callable to execute
+            *args: Positional arguments for callable
+            **kwargs: Keyword arguments for callable
+
+        Returns:
+            Result of the callable
+        """
+
+        return await asyncio.to_thread(func, *args, **kwargs)
 
     @abstractmethod
     async def collect(self) -> Any:

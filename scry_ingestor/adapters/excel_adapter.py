@@ -1,10 +1,11 @@
 """Adapter for collecting and processing Excel data."""
+
 import pandas as pd
-from typing import Any
 
 from .base import BaseAdapter
-from ..exceptions import CollectionError, TransformationError, ValidationError
+from ..exceptions import CollectionError
 from ..schemas.payload import ValidationResult
+
 
 class ExcelAdapter(BaseAdapter):
     """Adapter for Excel files using pandas."""
@@ -17,14 +18,16 @@ class ExcelAdapter(BaseAdapter):
                 if not file_path:
                     raise CollectionError("Excel file path not provided in config")
                 sheet_name = self.config.get("sheet_name", 0)
-                return pd.read_excel(file_path, sheet_name=sheet_name)
+                return await self._run_in_thread(pd.read_excel, file_path, sheet_name=sheet_name)
             elif source_type == "string":
-                import io
                 data = self.config.get("data")
                 if not data:
                     raise CollectionError("Excel bytes not provided in config")
                 sheet_name = self.config.get("sheet_name", 0)
-                return pd.read_excel(io.BytesIO(data), sheet_name=sheet_name)
+                import io
+
+                buffer = io.BytesIO(data)
+                return await self._run_in_thread(pd.read_excel, buffer, sheet_name=sheet_name)
             else:
                 raise CollectionError(f"Unsupported source type: {source_type}")
         except Exception as e:
@@ -36,7 +39,12 @@ class ExcelAdapter(BaseAdapter):
         metrics = {"row_count": len(raw_data), "column_count": len(raw_data.columns)}
         if raw_data.empty:
             errors.append("Excel sheet is empty")
-        return ValidationResult(is_valid=len(errors) == 0, errors=errors, warnings=warnings, metrics=metrics)
+        return ValidationResult(
+            is_valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings,
+            metrics=metrics,
+        )
 
     async def transform(self, raw_data: pd.DataFrame) -> pd.DataFrame:
         # Optionally clean or normalize data here

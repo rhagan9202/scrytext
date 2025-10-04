@@ -376,3 +376,37 @@ class TestPDFAdapter:
         if summary["total_pages"] > 0:
             avg = summary["total_text_length"] / summary["total_pages"]
             assert summary["average_text_per_page"] == pytest.approx(avg)
+
+    @pytest.mark.asyncio
+    async def test_text_trimming_per_page(self, sample_pdf_config):
+        """Test that per-page text trimming limits payload size."""
+        sample_pdf_config["transformation"] = {
+            "max_text_chars_per_page": 20,
+            "combine_pages": True,
+            "page_separator": "",
+        }
+        adapter = PDFAdapter(sample_pdf_config)
+        raw_data = await adapter.collect()
+        transformed = await adapter.transform(raw_data)
+
+        pages = transformed["pages"]
+        trimmed_flags = [page["text_truncated"] for page in pages]
+
+        assert len(pages) == 3
+        assert any(trimmed_flags), "Expected at least one page to be trimmed"
+
+        trimmed_count = 0
+        trimmed_characters_total = 0
+        for page in pages:
+            assert len(page["text"]) <= 20
+            if page["text_truncated"]:
+                trimmed_count += 1
+                original_length = page["text_original_length"]
+                trimmed_chars = page["text_trimmed_characters"]
+                assert original_length - len(page["text"]) == trimmed_chars
+                trimmed_characters_total += trimmed_chars
+
+        summary = transformed["summary"]
+        assert summary["trimmed_pages"] == trimmed_count
+        assert summary["trimmed_characters"] == trimmed_characters_total
+        assert len(transformed["full_text"]) <= 20 * len(pages)

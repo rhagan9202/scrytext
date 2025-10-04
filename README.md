@@ -232,7 +232,8 @@ config = {
         "extract_images": False,  # Extract image metadata (not raw images)
         "layout_mode": False,  # Preserve layout in text extraction
         "combine_pages": True,  # Combine all pages into full_text
-        "page_separator": "\n\n"
+    "page_separator": "\n\n",
+    "max_text_chars_per_page": None  # Trim page text payload (int) to cap size
     }
 }
 
@@ -261,6 +262,26 @@ for page in payload.data["pages"]:
 - Layout-aware text extraction option
 - Image detection and metadata
 - Per-page processing for large documents
+- Optional per-page text trimming to control payload size
+
+**Table extraction guidance:**
+- Enable `transformation.extract_tables` only when you need structured table output—each table is returned as a 2D list per page.
+- Vector-based or text-based PDFs yield the cleanest tables. Scanned tables require OCR plus grid lines for reliable results.
+- Adjust `table_settings.vertical_strategy` / `horizontal_strategy` when tables lack ruling lines (`"text"` works well for whitespace-aligned tables).
+- Tune `snap_tolerance` and `join_tolerance` for skewed scans. Increase values for noisy documents; lower them to avoid merging unrelated cells.
+- Use the `page_range` option to focus extraction on table-heavy sections and speed up processing.
+
+**OCR prerequisites (scanned PDFs):**
+- Install the Tesseract engine on the host (Linux: `sudo apt install tesseract-ocr`; macOS: `brew install tesseract`).
+- Add any additional language packs you need (for example, `tesseract-ocr-spa` on Debian/Ubuntu).
+- Ensure the `tesseract` binary is on the PATH for the service container or runtime user.
+- Set the `ocr.enabled` flag in `config/pdf_adapter.yaml` or the runtime config to `true` and choose the correct language code.
+- Expect slower processing and slightly larger payloads when OCR is enabled; scanned pages without OCR continue to raise validation warnings.
+
+**Payload trimming:**
+- Set `transformation.max_text_chars_per_page` to cap the number of characters stored per page.
+- Trimmed pages include `text_truncated`, `text_original_length`, and `text_trimmed_characters` metadata for downstream auditing.
+- Summary statistics expose `trimmed_pages` and `trimmed_characters` to monitor how often trimming occurs.
 
 ### Using the REST API
 

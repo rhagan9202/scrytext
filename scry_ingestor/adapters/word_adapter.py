@@ -59,7 +59,7 @@ class WordAdapter(BaseAdapter):
                         f"For .doc files, please convert to .docx format first."
                     )
 
-                return DocxDocument(file_path)
+                return await self._run_in_thread(DocxDocument, file_path)
 
             else:
                 raise CollectionError(f"Unsupported source type: {source_type}")
