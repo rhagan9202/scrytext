@@ -74,8 +74,34 @@ def _configure_root_logger() -> None:
         _LOG_CONFIGURED = True
 
 
-def setup_logger(name: str, level: str | None = None) -> logging.Logger:
-    """Return a logger configured with the global logging defaults."""
+class StructuredLoggerAdapter(logging.LoggerAdapter):
+    """Logger adapter that lets per-call extras override defaults."""
+
+    def process(self, msg: str, kwargs: dict[str, Any]) -> tuple[str, dict[str, Any]]:  # type: ignore[override]
+        base_extra = self.extra or {}
+        extra = dict(base_extra)
+        provided_extra = kwargs.get("extra") or {}
+        extra.update(provided_extra)
+        kwargs["extra"] = extra
+        return msg, kwargs
+
+
+def setup_logger(
+    name: str,
+    *,
+    level: str | None = None,
+    context: dict[str, Any] | None = None,
+) -> logging.LoggerAdapter:
+    """Return a logger configured with the global logging defaults.
+
+    Args:
+        name: Logger name to retrieve.
+        level: Optional log level override (primarily for tests).
+        context: Optional default structured context to include with every entry.
+
+    Returns:
+        LoggerAdapter injecting structured defaults for consistent formatting.
+    """
 
     _configure_root_logger()
     logger = logging.getLogger(name)
@@ -86,11 +112,16 @@ def setup_logger(name: str, level: str | None = None) -> logging.Logger:
     else:
         logger.setLevel(logging.NOTSET)
 
-    return logger
+    adapter_context: dict[str, Any] = dict(DEFAULT_CONTEXT)
+    if context:
+        for key, value in context.items():
+            adapter_context[key] = value
+
+    return StructuredLoggerAdapter(logger, adapter_context)
 
 
 def log_ingestion_attempt(
-    logger: logging.Logger,
+    logger: logging.Logger | logging.LoggerAdapter,
     source_id: str,
     adapter_type: str,
     duration_ms: int,

@@ -11,7 +11,7 @@ from .logging import setup_logger
 
 DEFAULT_CHUNK_SIZE = 1024 * 1024  # 1MB
 
-logger = setup_logger(__name__)
+logger = setup_logger(__name__, context={"adapter_type": "FileReaders"})
 
 
 def _ensure_mapping(options: Mapping[str, Any] | None, context: str) -> dict[str, Any]:

@@ -10,7 +10,7 @@ from ..monitoring.metrics import observe_processing_duration
 from ..schemas.payload import IngestionMetadata, IngestionPayload, ValidationResult
 from ..utils.logging import setup_logger
 
-logger = setup_logger(__name__)
+logger = setup_logger(__name__, context={"adapter_type": "BaseAdapter"})
 
 
 T = TypeVar("T")
@@ -136,7 +136,17 @@ class BaseAdapter(ABC):
                 try:
                     await self.cleanup(raw_data)
                 except Exception as cleanup_error:  # pragma: no cover - best effort cleanup
-                    logger.debug("Adapter cleanup failed: %s", cleanup_error, exc_info=True)
+                    logger.debug(
+                        "Adapter cleanup failed: %s",
+                        cleanup_error,
+                        exc_info=True,
+                        extra={
+                            "source_id": self.source_id,
+                            "adapter_type": self.__class__.__name__,
+                            "correlation_id": self.config.get("correlation_id", "-"),
+                            "status": "warning",
+                        },
+                    )
 
             if duration_ms is None:
                 end_time = datetime.now(timezone.utc)

@@ -116,6 +116,7 @@ class GlobalSettings(BaseSettings):
     environment: str = "development"
     log_level: str = "INFO"
     redis_url: str | None = None
+    database_url: str | None = None
     config_dir: Path = Path("config")
     fixtures_dir: Path = Path("tests/fixtures")
     aws: AWSSettings = AWSSettings()

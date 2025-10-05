@@ -209,11 +209,33 @@ async def test_collect_enforces_max_content_length(base_config: dict[str, Any]) 
 
   base_config["max_content_length"] = 16
   big_html = "<html><body>" + ("x" * 100) + "</body></html>"
-  base_config["_transport"] = build_transport(big_html)
+  base_config["_transport"] = build_transport(
+    big_html,
+    headers={"content-length": "16"},
+  )
 
   adapter = BeautifulSoupAdapter(base_config)
 
   with pytest.raises(CollectionError, match="max_content_length"):
+    await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_respects_declared_content_length_guardrail(
+  base_config: dict[str, Any]
+) -> None:
+  """Responses declaring excessive content-length should be rejected."""
+
+  base_config["max_content_length"] = 1024
+  html = "<html><body>ok</body></html>"
+  base_config["_transport"] = build_transport(
+    html,
+    headers={"content-length": "65536"},
+  )
+
+  adapter = BeautifulSoupAdapter(base_config)
+
+  with pytest.raises(CollectionError, match="Content-Length"):
     await adapter.collect()
 
 
@@ -265,4 +287,66 @@ async def test_collect_revalidates_allowlist_after_redirect(base_config: dict[st
   adapter = BeautifulSoupAdapter(base_config)
 
   with pytest.raises(CollectionError, match="allowlist"):
+    await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_blocks_private_network_host_by_default(
+  base_config: dict[str, Any]
+) -> None:
+  """Private hosts should raise unless explicitly allowed."""
+
+  base_config["url"] = "http://127.0.0.1/page"
+  base_config["_transport"] = build_transport("<html></html>")
+
+  adapter = BeautifulSoupAdapter(base_config)
+
+  with pytest.raises(CollectionError, match="Private network hosts"):
+    await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_allows_private_host_when_opted_in(
+  base_config: dict[str, Any]
+) -> None:
+  """Opting in to private networks should permit localhost fetching."""
+
+  base_config["url"] = "http://127.0.0.1/page"
+  base_config["allow_private_networks"] = True
+  base_config["allowed_hosts"] = ["127.0.0.1"]
+  base_config["_transport"] = build_transport("<html><body>ok</body></html>")
+
+  adapter = BeautifulSoupAdapter(base_config)
+  raw = await adapter.collect()
+
+  assert raw["status_code"] == 200
+  assert raw["url"].startswith("http://127.0.0.1")
+
+
+@pytest.mark.asyncio
+async def test_collect_requires_allowlist_for_redirects(
+  base_config: dict[str, Any]
+) -> None:
+  """Enabling redirects without an allowlist should raise."""
+
+  base_config["follow_redirects"] = True
+  base_config["_transport"] = build_transport("<html></html>")
+
+  adapter = BeautifulSoupAdapter(base_config)
+
+  with pytest.raises(CollectionError, match="follow_redirects"):
+    await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_rejects_invalid_timeout(
+  base_config: dict[str, Any]
+) -> None:
+  """Zero or negative timeouts should be rejected."""
+
+  base_config["timeout"] = -1
+
+  adapter = BeautifulSoupAdapter(base_config)
+
+  with pytest.raises(CollectionError, match="timeout must be greater than zero"):
     await adapter.collect()

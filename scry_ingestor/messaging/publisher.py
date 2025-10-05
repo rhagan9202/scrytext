@@ -14,7 +14,7 @@ from ..utils.config import get_settings
 from ..utils.logging import setup_logger
 from .schema import INGESTION_EVENT_SCHEMA, build_ingestion_event_record
 
-logger = setup_logger(__name__)
+logger = setup_logger(__name__, context={"adapter_type": "IngestionPublisher"})
 
 
 class IngestionEventPublisher:
@@ -29,14 +29,16 @@ class IngestionEventPublisher:
     def _create_producer(bootstrap_servers: str | None) -> KafkaProducer | None:
         if not bootstrap_servers:
             logger.warning(
-                "Kafka bootstrap servers not configured; ingestion events will not be published."
+                "Kafka bootstrap servers not configured; ingestion events will not be published.",
+                extra={"status": "warning"},
             )
             return None
 
         servers = [server.strip() for server in bootstrap_servers.split(",") if server.strip()]
         if not servers:
             logger.warning(
-                "Kafka bootstrap configuration is empty after parsing; disabling publisher."
+                "Kafka bootstrap configuration is empty after parsing; disabling publisher.",
+                extra={"status": "warning"},
             )
             return None
 
@@ -55,7 +57,12 @@ class IngestionEventPublisher:
         try:
             future.get(timeout=5)
         except Exception as exc:  # pragma: no cover - defensive logging
-            logger.error("Failed to publish ingestion event: %s", exc, exc_info=True)
+            logger.error(
+                "Failed to publish ingestion event: %s",
+                exc,
+                exc_info=True,
+                extra={"status": "error"},
+            )
 
     def close(self) -> None:
         """Close the underlying Kafka producer, flushing outstanding messages."""

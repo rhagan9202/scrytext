@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from ..exceptions import ScryIngestorError
 from ..utils.logging import setup_logger
 
-logger = setup_logger(__name__)
+logger = setup_logger(__name__, context={"adapter_type": "FastAPI"})
 
 
 @asynccontextmanager
@@ -34,7 +34,16 @@ app = FastAPI(
 @app.exception_handler(ScryIngestorError)
 async def scry_exception_handler(request: Request, exc: ScryIngestorError) -> JSONResponse:
     """Handle custom Scry_Ingestor exceptions."""
-    logger.error(f"ScryIngestorError: {exc}", extra={"path": request.url.path})
+    correlation_id = request.headers.get("x-correlation-id") or "-"
+    logger.error(
+        "ScryIngestorError: %s",
+        exc,
+        extra={
+            "path": request.url.path,
+            "correlation_id": correlation_id,
+            "status": "error",
+        },
+    )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={"status": "error", "message": str(exc), "error_type": exc.__class__.__name__},

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from collections.abc import Mapping
 from fnmatch import fnmatch
@@ -45,8 +46,12 @@ class BeautifulSoupAdapter(BaseAdapter):
         if method not in self.SUPPORTED_METHODS:
             raise CollectionError(f"Unsupported HTTP method: {method}")
 
-        timeout = self.config.get("timeout", 30.0)
+        timeout = self._parse_timeout(self.config.get("timeout", 30.0))
         follow_redirects = bool(self.config.get("follow_redirects", False))
+        if follow_redirects and not self._allowlist_declared():
+            raise CollectionError(
+                "follow_redirects requires an allowlist configuration to prevent SSRF"
+            )
         max_content_length = self._parse_positive_int(
             self.config.get("max_content_length"),
             "max_content_length",
@@ -76,6 +81,7 @@ class BeautifulSoupAdapter(BaseAdapter):
 
         target_url = self._resolve_request_url(url, base_url)
         self._enforce_url_allowlist(target_url)
+        self._enforce_network_policy(target_url)
 
         try:
             async with httpx.AsyncClient(**client_kwargs) as client:
@@ -88,14 +94,26 @@ class BeautifulSoupAdapter(BaseAdapter):
         await response.aread()
 
         self._enforce_url_allowlist(response.request.url)
+        self._enforce_network_policy(response.request.url)
 
         if not follow_redirects and response.is_redirect:
             raise CollectionError("Redirect responses are disallowed by configuration")
 
-        if max_content_length is not None and len(response.content) > max_content_length:
-            raise CollectionError(
-                "Response body exceeded configured max_content_length guardrail"
-            )
+        if max_content_length is not None:
+            declared_length = response.headers.get("content-length")
+            if declared_length:
+                try:
+                    declared_value = int(declared_length)
+                except ValueError as exc:
+                    raise CollectionError("Invalid Content-Length header received") from exc
+                if declared_value > max_content_length:
+                    raise CollectionError(
+                        "Response declared Content-Length exceeding configured limit"
+                    )
+            if len(response.content) > max_content_length:
+                raise CollectionError(
+                    "Response body exceeded configured max_content_length guardrail"
+                )
         try:
             elapsed_ms = int(response.elapsed.total_seconds() * 1000)
         except (AttributeError, RuntimeError):
@@ -266,6 +284,26 @@ class BeautifulSoupAdapter(BaseAdapter):
             raise CollectionError(f"{key} must be greater than zero")
         return value
 
+    def _parse_timeout(self, raw_value: Any) -> float:
+        """Validate timeout configuration and return a float value."""
+
+        try:
+            timeout_value = float(raw_value)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise CollectionError("timeout must be a numeric value") from exc
+
+        if timeout_value <= 0:
+            raise CollectionError("timeout must be greater than zero seconds")
+        if timeout_value > 300:
+            raise CollectionError("timeout exceeds maximum allowed value of 300 seconds")
+
+        return timeout_value
+
+    def _allowlist_declared(self) -> bool:
+        """Return True when any host or URL pattern allowlist is configured."""
+
+        return bool(self.config.get("allowed_hosts") or self.config.get("allowed_url_patterns"))
+
     def _resolve_request_url(self, url: str, base_url: str | None) -> httpx.URL:
         """Resolve and validate the absolute request URL."""
 
@@ -306,6 +344,26 @@ class BeautifulSoupAdapter(BaseAdapter):
             raise CollectionError(
                 f"URL '{url}' is not permitted by allowlist configuration"
             )
+
+    def _enforce_network_policy(self, url: httpx.URL) -> None:
+        """Block requests to private or loopback network ranges unless permitted."""
+
+        if bool(self.config.get("allow_private_networks", False)):
+            return
+
+        host = url.host or ""
+        lowered = host.lower()
+
+        if lowered in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}:
+            raise CollectionError("Private network hosts are disallowed by configuration")
+
+        try:
+            ip_obj = ipaddress.ip_address(lowered)
+        except ValueError:
+            return
+
+        if ip_obj.is_private or ip_obj.is_loopback or ip_obj.is_link_local or ip_obj.is_reserved:
+            raise CollectionError("Private network hosts are disallowed by configuration")
 
     def _normalized_sequence(self, key: str) -> list[str]:
         """Return a normalized list of non-empty lowercase strings from config."""

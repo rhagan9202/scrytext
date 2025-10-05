@@ -10,6 +10,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from scry_ingestor.api.main import app
+from scry_ingestor.models.base import reset_engine, session_scope
+from scry_ingestor.models.ingestion_record import IngestionRecord
 from scry_ingestor.utils.config import get_settings
 
 
@@ -45,6 +47,20 @@ def _patch_publisher(monkeypatch: pytest.MonkeyPatch) -> StubPublisher:
     return publisher
 
 
+@pytest.fixture
+def configured_db(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory):
+    """Configure an isolated SQLite database for API persistence tests."""
+
+    db_path = tmp_path_factory.mktemp("api-db") / "ingestion.sqlite"
+    monkeypatch.setenv("SCRY_DATABASE_URL", f"sqlite:///{db_path}")
+    get_settings.cache_clear()
+    reset_engine()
+    yield
+    reset_engine()
+    monkeypatch.delenv("SCRY_DATABASE_URL", raising=False)
+    get_settings.cache_clear()
+
+
 def test_success_log_includes_validation_summary(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -76,9 +92,10 @@ def test_success_log_includes_validation_summary(
     assert success_logs, "Expected at least one success log entry."
 
     record = success_logs[-1]
-    assert record.correlation_id == "corr-log-1"
+    assert getattr(record, "correlation_id", None) == "corr-log-1"
 
-    summary = json.loads(record.validation_summary)
+    summary_raw = getattr(record, "validation_summary", "{}")
+    summary = json.loads(summary_raw)
     assert summary["is_valid"] is True
     assert summary["error_count"] == 0
     assert summary["warning_count"] == 0
@@ -118,11 +135,127 @@ def test_error_log_includes_validation_summary(
     assert error_logs, "Expected at least one error log entry."
 
     record = error_logs[-1]
-    assert record.correlation_id == "corr-log-2"
+    assert getattr(record, "correlation_id", None) == "corr-log-2"
 
-    summary = json.loads(record.validation_summary)
+    summary_raw = getattr(record, "validation_summary", "{}")
+    summary = json.loads(summary_raw)
     assert summary["is_valid"] is False
     assert summary["error_count"] == 1
     assert summary["warning_count"] == 0
     assert summary["errors"]
     assert "does-not-exist.json" in summary["errors"][0]
+
+
+def test_missing_adapter_logs_correlation_id(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Adapter lookups that fail should log correlation and adapter fields."""
+
+    payload = {
+        "adapter_type": "missing-adapter",
+        "source_config": {
+            "source_id": "missing-src",
+        },
+        "correlation_id": "corr-missing-adapter",
+    }
+
+    with caplog.at_level(logging.ERROR):
+        response = client.post(
+            "/api/v1/ingest",
+            json=payload,
+            headers={"X-API-Key": "valid-key"},
+        )
+
+    assert response.status_code == 404
+
+    adapter_logs = [record for record in caplog.records if "Adapter not found" in record.message]
+    assert adapter_logs, "Expected an adapter-not-found log entry."
+
+    record = adapter_logs[-1]
+    assert getattr(record, "correlation_id", None) == "corr-missing-adapter"
+    assert getattr(record, "adapter_type", None) == "missing-adapter"
+    assert getattr(record, "status", None) == "error"
+
+
+def test_success_persists_ingestion_record(
+    configured_db: None, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Successful ingestions should be stored in the ingestion records table."""
+
+    _patch_publisher(monkeypatch)
+
+    payload = {
+        "adapter_type": "json",
+        "source_config": {
+            "source_id": "persist-json-source",
+            "source_type": "file",
+            "path": "tests/fixtures/sample.json",
+            "use_cloud_processing": False,
+        },
+        "correlation_id": "corr-persist-success",
+    }
+
+    response = client.post(
+        "/api/v1/ingest",
+        json=payload,
+        headers={"X-API-Key": "valid-key"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "success"
+
+    with session_scope() as session:
+        records = session.query(IngestionRecord).all()
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.status == "success"
+    assert record.adapter_type == "JSONAdapter"
+    assert record.source_id == "persist-json-source"
+    assert record.correlation_id == "corr-persist-success"
+    assert record.validation_summary is not None
+    assert record.validation_summary["is_valid"] is True
+
+
+def test_error_persists_ingestion_record(
+    configured_db: None, client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Failed ingestions should also be persisted with error details."""
+
+    _patch_publisher(monkeypatch)
+
+    payload = {
+        "adapter_type": "json",
+        "source_config": {
+            "source_id": "persist-json-error",
+            "source_type": "file",
+            "path": "tests/fixtures/does-not-exist.json",
+            "use_cloud_processing": False,
+        },
+        "correlation_id": "corr-persist-error",
+    }
+
+    response = client.post(
+        "/api/v1/ingest",
+        json=payload,
+        headers={"X-API-Key": "valid-key"},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "error"
+
+    with session_scope() as session:
+        records = session.query(IngestionRecord).all()
+
+    assert len(records) == 1
+    record = records[0]
+    assert record.status == "error"
+    assert record.adapter_type == "json"
+    assert record.source_id == "persist-json-error"
+    assert record.correlation_id == "corr-persist-error"
+    assert record.error_details is not None
+    assert record.error_details["error_type"] == body["error_details"]["error_type"]
+    assert record.validation_summary is not None
+    assert record.validation_summary["is_valid"] is False

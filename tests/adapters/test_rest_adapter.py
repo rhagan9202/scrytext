@@ -196,12 +196,31 @@ async def test_collect_enforces_max_content_length(base_config: dict[str, Any]) 
     base_config["_transport"] = build_transport(
         200,
         b"excess",
-        headers={"content-type": "text/plain"},
+        headers={"content-type": "text/plain", "content-length": "4"},
     )
 
     adapter = RESTAdapter(base_config)
 
     with pytest.raises(CollectionError, match="max_content_length"):
+        await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_respects_declared_content_length_guardrail(
+    base_config: dict[str, Any]
+) -> None:
+    """Responses declaring a content-length above the limit must be rejected."""
+
+    base_config["max_content_length"] = 10
+    base_config["_transport"] = build_transport(
+        200,
+        b"short",
+        headers={"content-type": "text/plain", "content-length": "2048"},
+    )
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="Content-Length"):
         await adapter.collect()
 
 
@@ -268,4 +287,62 @@ async def test_collect_raises_on_timeout(base_config: dict[str, Any]) -> None:
     adapter = RESTAdapter(base_config)
 
     with pytest.raises(CollectionError, match="timed out"):
+        await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_blocks_private_network_host_by_default(
+    base_config: dict[str, Any]
+) -> None:
+    """Private or loopback network hosts should be rejected unless explicitly allowed."""
+
+    base_config["endpoint"] = "http://127.0.0.1/internal"
+    base_config["_transport"] = build_transport(200, {"ok": True})
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="Private network hosts"):
+        await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_allows_private_network_when_opted_in(
+    base_config: dict[str, Any]
+) -> None:
+    """Explicit opt-in should allow private hosts when combined with an allowlist."""
+
+    base_config["endpoint"] = "http://127.0.0.1/internal"
+    base_config["allow_private_networks"] = True
+    base_config["allowed_hosts"] = ["127.0.0.1"]
+    base_config["_transport"] = build_transport(200, {"result": "ok"})
+
+    adapter = RESTAdapter(base_config)
+    raw = await adapter.collect()
+
+    assert raw["status_code"] == 200
+    assert raw["url"].startswith("http://127.0.0.1")
+
+
+@pytest.mark.asyncio
+async def test_collect_requires_allowlist_for_redirects(base_config: dict[str, Any]) -> None:
+    """Enabling redirects without an allowlist should be blocked for safety."""
+
+    base_config["follow_redirects"] = True
+    base_config["_transport"] = build_transport(200, {"items": []})
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="follow_redirects"):
+        await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_rejects_invalid_timeout(base_config: dict[str, Any]) -> None:
+    """Non-positive timeouts should raise a CollectionError."""
+
+    base_config["timeout"] = 0
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="timeout must be greater than zero"):
         await adapter.collect()
