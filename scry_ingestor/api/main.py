@@ -26,9 +26,61 @@ async def lifespan(app: FastAPI):  # type: ignore
 # Create FastAPI app
 app = FastAPI(
     title="Scry_Ingestor API",
-    description="Data ingestion service for collecting and processing data from diverse sources",
-    version="0.1.0",
+    description="""
+## Data Ingestion Service
+
+Scry_Ingestor is a comprehensive data ingestion service that collects,
+processes, and standardizes data from diverse sources including:
+- **Structured data**: JSON, CSV, Excel files
+- **Unstructured data**: PDF documents, Word files
+- **Web content**: HTML scraping, REST APIs
+
+### Key Features
+- 🔄 **Adapter Pattern**: Pluggable adapters for different data source types
+- 📊 **Standardized Output**: Consistent payload structure across all adapters
+- 🔐 **API Key Authentication**: Secure access control
+- 📈 **Observability**: Built-in metrics, logging, and monitoring
+- ⚡ **Async Processing**: High-performance async ingestion pipeline
+- 🛡️ **Error Handling**: Comprehensive validation and error reporting
+
+### Authentication
+All ingestion endpoints require API key authentication via the `X-API-Key` header.
+    """,
+    version="1.0.0",
     lifespan=lifespan,
+    contact={
+        "name": "Scry_Ingestor Support",
+        "url": "https://github.com/your-org/scry-ingestor",
+        "email": "support@example.com",
+    },
+    license_info={
+        "name": "MIT",
+        "url": "https://opensource.org/licenses/MIT",
+    },
+    servers=[
+        {
+            "url": "http://localhost:8000",
+            "description": "Development server"
+        },
+        {
+            "url": "https://api.scry-ingestor.example.com",
+            "description": "Production server"
+        }
+    ],
+    openapi_tags=[
+        {
+            "name": "health",
+            "description": "Health check endpoints for service monitoring"
+        },
+        {
+            "name": "ingestion",
+            "description": "Data ingestion endpoints for processing various data sources"
+        },
+        {
+            "name": "monitoring",
+            "description": "Metrics and observability endpoints"
+        }
+    ]
 )
 
 

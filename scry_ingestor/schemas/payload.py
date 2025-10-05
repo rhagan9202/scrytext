@@ -52,3 +52,9 @@ class IngestionResponse(BaseModel):
     message: str = Field(..., description="Human-readable status message")
     payload: IngestionPayload | None = Field(None, description="Ingestion payload if successful")
     error_details: dict[str, Any] | None = Field(None, description="Error details if failed")
+
+
+class AdapterListResponse(BaseModel):
+    """Response schema listing available adapters."""
+
+    adapters: list[str] = Field(..., description="Registered adapter identifiers")

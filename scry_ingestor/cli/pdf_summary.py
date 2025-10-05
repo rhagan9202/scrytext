@@ -1,6 +1,7 @@
 """CLI utility for summarizing PDF ingestion results."""
 import asyncio
 import json
+from pathlib import Path
 from typing import Any
 
 import click
@@ -186,8 +187,8 @@ def print_json_output(payload: IngestionPayload) -> None:
 )
 @click.option(
     "--source-id",
-    default="cli-pdf-summary",
-    help="Source identifier for tracking",
+    default=None,
+    help="Source identifier for tracking (defaults to filename)",
 )
 def summarize_pdf(
     pdf_path: str,
@@ -225,7 +226,7 @@ def summarize_pdf(
     """
     # Build configuration
     config: dict[str, Any] = {
-        "source_id": source_id,
+        "source_id": source_id or Path(pdf_path).stem,
         "source_type": "file",
         "path": pdf_path,
         "use_cloud_processing": False,

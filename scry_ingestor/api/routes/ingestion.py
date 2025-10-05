@@ -10,7 +10,7 @@ from ...exceptions import AdapterNotFoundError, ScryIngestorError
 from ...messaging.publisher import get_ingestion_publisher
 from ...models.repository import build_error_record, build_success_record, persist_ingestion_record
 from ...monitoring.metrics import record_ingestion_attempt, record_ingestion_error
-from ...schemas.payload import IngestionRequest, IngestionResponse
+from ...schemas.payload import AdapterListResponse, IngestionRequest, IngestionResponse
 from ...utils.logging import log_ingestion_attempt, setup_logger
 from ..dependencies import require_api_key
 
@@ -53,7 +53,53 @@ def _persist_error(
     )
 
 
-@router.post("/ingest", response_model=IngestionResponse)
+@router.post(
+    "/ingest",
+    response_model=IngestionResponse,
+    summary="Execute data ingestion with a registered adapter",
+    description=(
+        "Run the ingestion pipeline using one of the registered adapters. "
+        "The request payload determines which adapter is used and how the source "
+        "data is fetched."
+    ),
+    response_description="Standardized ingestion payload with validation metadata.",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {
+            "description": "Missing or invalid API key.",
+        },
+        status.HTTP_403_FORBIDDEN: {
+            "description": "API key authenticated but not authorized.",
+        },
+        status.HTTP_404_NOT_FOUND: {
+            "description": "Requested adapter is not registered.",
+        },
+        status.HTTP_500_INTERNAL_SERVER_ERROR: {
+            "description": "Unhandled ingestion failure.",
+        },
+    },
+    openapi_extra={
+        "requestBody": {
+            "content": {
+                "application/json": {
+                    "example": {
+                        "adapter_type": "pdf",
+                        "source_config": {
+                            "source_id": "invoice-2024-09-15",
+                            "path": "s3://enterprise-data/documents/invoice.pdf",
+                            "use_cloud_processing": True,
+                            "transformation": {
+                                "extract_metadata": True,
+                                "extract_tables": False,
+                                "combine_pages": True,
+                            },
+                        },
+                        "correlation_id": "3d0dfb58-3f23-4a7a-9b60-5d0a4ffbc9dd",
+                    }
+                }
+            }
+        }
+    },
+)
 async def ingest_data(request: IngestionRequest) -> IngestionResponse:
     """
     Ingest data from a source using the specified adapter.
@@ -206,8 +252,17 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
         return response
 
 
-@router.get("/ingest/adapters")
-async def list_available_adapters() -> dict[str, list[str]]:
+@router.get(
+    "/ingest/adapters",
+    response_model=AdapterListResponse,
+    summary="List registered data source adapters",
+    description=(
+        "Retrieve the identifiers of all adapters currently registered with the "
+        "ingestion service."
+    ),
+    response_description="Adapter identifiers available for use in ingestion requests.",
+)
+async def list_available_adapters() -> AdapterListResponse:
     """
     List all available data source adapters.
 
@@ -216,4 +271,4 @@ async def list_available_adapters() -> dict[str, list[str]]:
     """
     from ...adapters import list_adapters
 
-    return {"adapters": list_adapters()}
+    return AdapterListResponse(adapters=list_adapters())

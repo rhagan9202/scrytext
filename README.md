@@ -14,6 +14,12 @@
 
 ## Quick Start
 
+## Documentation
+
+- [API Reference](./API_REFERENCE.md) – Endpoint catalog, authentication, and example payloads.
+- [Deployment Guide](./DEPLOYMENT_GUIDE.md) – Step-by-step instructions for local, container, and cloud environments.
+- [Performance Characteristics](./PERFORMANCE.md) – Throughput guidance, scaling strategies, and tuning tips.
+
 ### Prerequisites
 
 - Python 3.10+
@@ -375,6 +381,19 @@ for page in payload.data["pages"]:
 - Set `transformation.max_text_chars_per_page` to cap the number of characters stored per page.
 - Trimmed pages include `text_truncated`, `text_original_length`, and `text_trimmed_characters` metadata for downstream auditing.
 - Summary statistics expose `trimmed_pages` and `trimmed_characters` to monitor how often trimming occurs.
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Resolution |
+| --- | --- | --- |
+| `401 Unauthorized` from `/api/v1/ingest` | Missing `X-API-Key` header or key not configured | Add header with a value present in `SCRY_API_KEYS`. Reload app after changing keys. |
+| `SCRY_DATABASE_URL is required` during startup | Database URL not set | Export `SCRY_DATABASE_URL` or provide it in `.env` before launching the API. |
+| `AdapterNotFoundError` in responses | Adapter name typo or adapter not registered | Run `GET /api/v1/ingest/adapters` to list supported adapters and update request payload. |
+| Celery worker exits with broker errors | Incorrect `SCRY_BROKER_URL` | Verify broker is reachable; regenerate connection string (e.g., `redis://host:6379/0`). |
+| Large PDF ingestions timeout | `max_bytes`/`max_text_chars_per_page` not tuned | Increase limits or enable streaming options in the adapter config. |
+| Prometheus metrics missing | Metrics endpoint not scraped | Confirm `/metrics` is exposed and Prometheus scrape config targets the service. |
+
+Need more help? Open an issue or reach out to the platform team with logs and correlation IDs.
 
 ### Using the REST API
 
