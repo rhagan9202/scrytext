@@ -128,6 +128,59 @@ docker build -t scry-ingestor:v0.1.0 .
 docker buildx build --platform linux/amd64,linux/arm64 -t scry-ingestor:latest .
 ```
 
+### Database Migrations
+
+- Generate schema changes with Alembic and review the resulting files under
+  `alembic/versions/` before committing.
+- Apply migrations locally and in CI with `poetry run alembic upgrade head` after
+  exporting the `SCRY_DATABASE_URL` environment variable.
+- Follow the zero-downtime checklist in [`DATABASE_MIGRATIONS.md`](./DATABASE_MIGRATIONS.md)
+  for production rollouts, including concurrent indexes and staged destructive changes.
+
+### Container Health, Metrics & Scanning
+
+- The container baked health check calls `GET /health` on port 8000. The same probe is
+  wired into `docker-compose.yml`, enabling orchestrators to track readiness and liveness.
+- Prometheus metrics are exposed at `GET /metrics` on port 8000, and the compose service
+  includes `prometheus.io/*` labels for auto-discovery. Multiprocess metrics are enabled
+  via `PROMETHEUS_MULTIPROC_DIR=/tmp/prometheus` in the image.
+- The build context is trimmed with `.dockerignore` so only runtime assets reach the
+  final layer; migrate any new required files into the explicit COPY list before relying
+  on them at runtime.
+- Run ad-hoc vulnerability scans on images before publishing:
+
+```bash
+# Scan the local image (adjust tag/registry as needed)
+trivy image scry-ingestor:latest
+
+# Compare SBOMs and CVEs using Docker Scout
+docker scout cves scry-ingestor:latest
+```
+
+- CI executes nightly `trivy` and `pip-audit` checks (see `ops-nightly.yml`), but manual
+  scans are encouraged before promoting images to production registries.
+
+## CI/CD & Operations
+
+Scry_Ingestor uses GitHub Actions to coordinate quality gates, packaging, and operational checks. The following workflows live in `.github/workflows/`:
+
+- **`ci.yml`** – Runs on pushes to `main`/`develop` and on pull requests. Executes Ruff, Black, MyPy, and pytest across Python 3.10 and 3.12 using Poetry-managed virtualenvs.
+- **`docker.yml`** – Builds the multi-stage production image with Buildx. Images are pushed to `ghcr.io/<owner>/scry-ingestor` on `main` or semver tag pushes, and built (without publishing) for pull requests.
+- **`release.yml`** – Publishes Poetry artifacts to PyPI when a tag prefixed with `v` is pushed. Requires the repository secret `PYPI_TOKEN`. The workflow also uploads the built distributions as artifacts.
+- **`codeql.yml`** – Performs static analysis with CodeQL on pushes, pull requests, and a weekly schedule.
+- **`dependency-review.yml`** – Adds automated dependency change reviews to pull requests targeting `main` or `develop`, failing the build on new high-severity advisories.
+- **`ops-nightly.yml`** – Nightly scheduled job that runs `pip-audit` against Poetry dependencies and scans the Docker image with Trivy for critical/high vulnerabilities. Fails the job if these checks find actionable issues.
+
+### Required secrets & environments
+
+| Workflow | Secret / Setting | Purpose |
+|----------|------------------|---------|
+| `docker.yml` | `GITHUB_TOKEN` (built-in) | Authenticates with GHCR for image pushes. |
+| `release.yml` | `PYPI_TOKEN` | PyPI publishing credentials (recommend storing in a protected `pypi` environment). |
+| `ops-nightly.yml` | *(none required)* | Uses public registries; optionally add `TRIVY_USERNAME`/`TRIVY_PASSWORD` when scanning private bases. |
+
+To tailor pipelines for additional platforms (e.g., AWS ECR, Slack notifications), add the necessary secrets to the repository or to [GitHub Environments](https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment) and update the workflows accordingly.
+
 ## Usage Examples
 
 ### Using the JSONAdapter

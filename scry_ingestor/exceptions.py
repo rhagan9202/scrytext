@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-
 if TYPE_CHECKING:  # pragma: no cover - type checking only
     from scry_ingestor.tasks.error_handling import TaskErrorReport
     from scry_ingestor.tasks.policies import CeleryRetryPolicy

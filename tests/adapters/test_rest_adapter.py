@@ -23,7 +23,7 @@ def build_transport(
         response_headers.update(headers)
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        content = json.dumps(data).encode("utf-8") if isinstance(data, (dict, list)) else data
+        content = json.dumps(data).encode("utf-8") if isinstance(data, dict | list) else data
         return httpx.Response(
             status_code,
             headers=response_headers,

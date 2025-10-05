@@ -11,11 +11,12 @@ from scry_ingestor.schemas.payload import IngestionPayload
 
 def format_bytes(num_bytes: int) -> str:
     """Format bytes as human-readable string."""
+    size = float(num_bytes)
     for unit in ["B", "KB", "MB", "GB"]:
-        if num_bytes < 1024.0:
-            return f"{num_bytes:.1f}{unit}"
-        num_bytes /= 1024.0
-    return f"{num_bytes:.1f}TB"
+        if size < 1024.0:
+            return f"{size:.1f}{unit}"
+        size /= 1024.0
+    return f"{size:.1f}TB"
 
 
 def print_summary(payload: IngestionPayload) -> None:
@@ -23,7 +24,7 @@ def print_summary(payload: IngestionPayload) -> None:
     click.echo("\n" + "=" * 70)
     click.echo("PDF INGESTION SUMMARY")
     click.echo("=" * 70)
-    
+
     # Metadata section
     click.echo("\n📋 DOCUMENT METADATA")
     click.echo("-" * 70)
@@ -36,7 +37,7 @@ def print_summary(payload: IngestionPayload) -> None:
     click.echo(f"  Page Count:   {metadata.get('page_count', 0)}")
     click.echo(f"  Format:       {metadata.get('format') or 'N/A'}")
     click.echo(f"  Encrypted:    {metadata.get('is_encrypted', False)}")
-    
+
     # Content summary
     click.echo("\n📊 CONTENT SUMMARY")
     click.echo("-" * 70)
@@ -46,7 +47,7 @@ def print_summary(payload: IngestionPayload) -> None:
     click.echo(f"  Average Text/Page:    {summary.get('average_text_per_page', 0):.1f} chars")
     click.echo(f"  Total Tables:         {summary.get('total_tables', 0)}")
     click.echo(f"  Total Images:         {summary.get('total_images', 0)}")
-    
+
     # Trimming statistics
     trimmed_pages = summary.get("trimmed_pages", 0)
     trimmed_chars = summary.get("trimmed_characters", 0)
@@ -54,7 +55,7 @@ def print_summary(payload: IngestionPayload) -> None:
         click.echo("\n  ⚠️  Text Trimming Applied:")
         click.echo(f"      Pages Trimmed:      {trimmed_pages}")
         click.echo(f"      Characters Removed: {trimmed_chars:,}")
-    
+
     # Per-page breakdown
     pages = payload.data.get("pages", [])
     if pages:
@@ -66,7 +67,7 @@ def print_summary(payload: IngestionPayload) -> None:
             tables = len(page.get("tables", []))
             images = len(page.get("images", []))
             truncated = page.get("text_truncated", False)
-            
+
             status = " [TRIMMED]" if truncated else ""
             page_text = f"  Page {page_num}: {text_len:,} chars, "
             page_text += f"{tables} tables, {images} images{status}"
@@ -75,7 +76,7 @@ def print_summary(payload: IngestionPayload) -> None:
             if truncated:
                 original = page.get("text_original_length", 0)
                 click.echo(f"           (original: {original:,} chars)")
-    
+
     # Processing metadata
     click.echo("\n⚙️  PROCESSING DETAILS")
     click.echo("-" * 70)
@@ -86,14 +87,14 @@ def print_summary(payload: IngestionPayload) -> None:
     click.echo(f"  Timestamp:        {payload.metadata.timestamp}")
     if payload.metadata.correlation_id:
         click.echo(f"  Correlation ID:   {payload.metadata.correlation_id}")
-    
+
     # Validation status
     click.echo("\n✅ VALIDATION")
     click.echo("-" * 70)
     validation = payload.validation
     status_icon = "✅" if validation.is_valid else "❌"
     click.echo(f"  Status: {status_icon} {'VALID' if validation.is_valid else 'INVALID'}")
-    
+
     if validation.errors:
         click.echo("\n  Errors:")
         for error in validation.errors:
@@ -108,7 +109,7 @@ def print_summary(payload: IngestionPayload) -> None:
         click.echo("\n  Quality Metrics:")
         for key, value in validation.metrics.items():
             click.echo(f"    {key}: {value}")
-    
+
     click.echo("\n" + "=" * 70 + "\n")
 
 
@@ -146,7 +147,7 @@ def print_json_output(payload: IngestionPayload) -> None:
             for p in payload.data.get("pages", [])
         ],
     }
-    
+
     click.echo(json.dumps(output, indent=2))
 
 
@@ -200,25 +201,25 @@ def summarize_pdf(
 ) -> None:
     """
     Summarize PDF ingestion results without storing full text content.
-    
+
     This utility processes a PDF document using the PDFAdapter and displays
     a comprehensive summary including metadata, content statistics, validation
     results, and per-page breakdowns.
-    
+
     Examples:
-    
+
         # Basic summary
         scry-pdf-summary document.pdf
-        
+
         # With table extraction
         scry-pdf-summary --extract-tables document.pdf
-        
+
         # Process first 10 pages only
         scry-pdf-summary --page-range 0,10 large_document.pdf
-        
+
         # Limit text per page to 5000 chars
         scry-pdf-summary --max-chars-per-page 5000 document.pdf
-        
+
         # JSON output for automation
         scry-pdf-summary --json document.pdf
     """
@@ -236,10 +237,10 @@ def summarize_pdf(
             "combine_pages": True,
         },
     }
-    
+
     if max_chars_per_page:
         config["transformation"]["max_text_chars_per_page"] = max_chars_per_page
-    
+
     if page_range:
         try:
             start, end = map(int, page_range.split(","))
@@ -247,25 +248,25 @@ def summarize_pdf(
         except ValueError:
             click.echo("Error: --page-range must be in format 'start,end' (e.g., '0,5')", err=True)
             raise click.Abort()
-    
+
     # Process PDF
     try:
         if not output_json:
             click.echo(f"Processing PDF: {pdf_path}")
             click.echo("Please wait...")
-        
+
         async def process() -> IngestionPayload:
             adapter = PDFAdapter(config)
             return await adapter.process()
-        
+
         payload = asyncio.run(process())
-        
+
         # Display results
         if output_json:
             print_json_output(payload)
         else:
             print_summary(payload)
-        
+
     except Exception as e:
         click.echo(f"\n❌ Error processing PDF: {str(e)}", err=True)
         raise click.Abort()

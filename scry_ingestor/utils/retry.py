@@ -62,7 +62,7 @@ class RetryConfig(BaseModel):
     def _coerce_status_codes(cls, value: Any) -> list[int]:
         if value is None:
             return []
-        if not isinstance(value, (list, tuple, set)):
+        if not isinstance(value, list | tuple | set):
             raise ValueError("status_forcelist must be a sequence of integers")
         coerced: list[int] = []
         for item in value:
@@ -77,7 +77,7 @@ class RetryConfig(BaseModel):
     def _coerce_methods(cls, value: Any) -> list[str]:
         if value is None:
             return []
-        if not isinstance(value, (list, tuple, set)):
+        if not isinstance(value, list | tuple | set):
             raise ValueError("retry_on_methods must be a sequence of HTTP methods")
         result: list[str] = []
         for item in value:
@@ -165,7 +165,7 @@ def _wait_strategy(config: RetryConfig) -> Callable[[RetryCallState], float]:
 
         if config.jitter > 0:
             delay += random.uniform(0, config.jitter)
-        return max(delay, 0.0)
+        return float(max(delay, 0.0))
 
     return _wait
 

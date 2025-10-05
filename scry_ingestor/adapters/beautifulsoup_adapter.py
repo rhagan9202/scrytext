@@ -388,7 +388,7 @@ class BeautifulSoupAdapter(BaseAdapter):
         raw_value = self.config.get(key)
         if raw_value is None:
             return []
-        if not isinstance(raw_value, (list, tuple, set)):
+        if not isinstance(raw_value, list | tuple | set):
             raise CollectionError(f"{key} must be a sequence of strings")
 
         normalized: list[str] = []
@@ -404,7 +404,7 @@ class BeautifulSoupAdapter(BaseAdapter):
         raw_value = self.config.get(key)
         if raw_value is None:
             return []
-        if not isinstance(raw_value, (list, tuple, set)):
+        if not isinstance(raw_value, list | tuple | set):
             raise CollectionError(f"{key} must be a sequence of regex patterns")
 
         compiled: list[re.Pattern[str]] = []

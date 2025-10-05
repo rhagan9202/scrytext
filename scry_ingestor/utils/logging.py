@@ -62,7 +62,7 @@ def _configure_root_logger() -> None:
         formatter = ContextualFormatter(LOG_FORMAT, DEFAULT_CONTEXT)
 
         if not root_logger.handlers:
-            handler = logging.StreamHandler(sys.stdout)
+            handler: logging.Handler = logging.StreamHandler(sys.stdout)
             handler.setLevel(resolved_level)
             handler.setFormatter(formatter)
             root_logger.addHandler(handler)

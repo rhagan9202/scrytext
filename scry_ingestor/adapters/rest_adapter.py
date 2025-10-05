@@ -120,7 +120,7 @@ class RESTAdapter(BaseAdapter):
             request_kwargs["auth"] = auth
 
         if body is not None:
-            if isinstance(body, (dict, list)):
+            if isinstance(body, dict | list):
                 request_kwargs["json"] = body
             else:
                 body_format = self.config.get("body_format", "auto").lower()
@@ -128,7 +128,7 @@ class RESTAdapter(BaseAdapter):
                     request_kwargs["json"] = json.loads(body)
                 else:
                     request_kwargs["content"] = (
-                        body if isinstance(body, (bytes, bytearray)) else str(body)
+                        body if isinstance(body, bytes | bytearray) else str(body)
                     )
 
         retry_config = self._retry_config
@@ -419,7 +419,7 @@ class RESTAdapter(BaseAdapter):
         raw_value = self.config.get(key)
         if raw_value is None:
             return []
-        if not isinstance(raw_value, (list, tuple, set)):
+        if not isinstance(raw_value, list | tuple | set):
             raise CollectionError(f"{key} must be a sequence of strings")
 
         normalized: list[str] = []
@@ -435,7 +435,7 @@ class RESTAdapter(BaseAdapter):
         raw_value = self.config.get(key)
         if raw_value is None:
             return []
-        if not isinstance(raw_value, (list, tuple, set)):
+        if not isinstance(raw_value, list | tuple | set):
             raise CollectionError(f"{key} must be a sequence of regex patterns")
 
         compiled: list[re.Pattern[str]] = []

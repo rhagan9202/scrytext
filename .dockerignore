@@ -1,0 +1,41 @@
+# Docker build context exclusions for Scry_Ingestor
+
+# Version control
+.git
+.gitignore
+.github/
+
+# Environment & secrets
+.env
+.env.*
+*.log
+
+# Python artifacts and caches
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+
+# Virtual environments and Poetry cache
+.venv/
+.poetry/
+.poetry-cache/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Tests, docs, and notebooks are not needed in the runtime image
+tests/
+docs/
+notebooks/
+
+# Editor and OS cruft
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

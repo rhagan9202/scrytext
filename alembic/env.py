@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from logging.config import fileConfig
 
-from alembic import context  # type: ignore[import-untyped]
 from sqlalchemy import create_engine, pool
 
+from alembic import context  # type: ignore[import-untyped]
 from scry_ingestor.models.base import Base
 from scry_ingestor.utils.config import ensure_runtime_configuration, get_settings
 
@@ -40,6 +40,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         compare_type=True,
         compare_server_default=True,
+        transaction_per_migration=True,
     )
 
     with context.begin_transaction():
@@ -58,6 +59,7 @@ def run_migrations_online() -> None:
             target_metadata=target_metadata,
             compare_type=True,
             compare_server_default=True,
+            transaction_per_migration=True,
         )
 
         with context.begin_transaction():

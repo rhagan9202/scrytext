@@ -45,7 +45,7 @@ class PDFTransformationConfig(BaseModel):
     def _parse_page_range(cls, value: Any) -> tuple[int, int] | None:
         if value is None or value == []:
             return None
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, list | tuple):
             if len(value) != 2:
                 raise ValueError("page_range must contain exactly two entries")
             start, end = value

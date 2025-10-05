@@ -35,7 +35,7 @@ class TaskErrorReport:
     def to_dict(self) -> dict[str, Any]:
         """Return a serializable dictionary representation of the error report."""
 
-        payload = {
+        payload: dict[str, Any] = {
             "adapter_type": self.adapter_type,
             "source_id": self.source_id,
             "correlation_id": self.correlation_id,

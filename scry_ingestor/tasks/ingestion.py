@@ -152,7 +152,7 @@ def _resolve_retry_policy(config: dict[str, Any], settings: GlobalSettings) -> C
     retryable_errors_raw = raw_policy.get("retryable_errors")
     retryable_exceptions: list[type[Exception]] | None = None
     if retryable_errors_raw is not None:
-        if not isinstance(retryable_errors_raw, (list, tuple, set)):
+        if not isinstance(retryable_errors_raw, list | tuple | set):
             raise ConfigurationError(
                 "celery_retry.retryable_errors must be a sequence of exception names"
             )
@@ -344,7 +344,7 @@ def _register_task(adapter_name: str) -> None:
     settings = get_settings()
 
     @celery_app.task(name=task_name, bind=True, max_retries=settings.celery_max_retries)
-    def _task(self, request_payload: dict[str, Any]) -> dict[str, Any]:
+    def _task(self: Any, request_payload: dict[str, Any]) -> dict[str, Any]:
         """Run the ingestion pipeline for the bound adapter."""
 
         try:

@@ -11,6 +11,8 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
+)
+from pydantic import (
     ValidationError as PydanticValidationError,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -149,7 +151,7 @@ class GlobalSettings(BaseSettings):
         if isinstance(value, str):
             keys = [item.strip() for item in value.split(",")]
             return [key for key in keys if key]
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             return [str(item) for item in value if str(item).strip()]
         raise ValueError("api_keys must be a comma-separated string or iterable of strings")
 

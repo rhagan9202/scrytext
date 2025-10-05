@@ -52,7 +52,7 @@ class JSONAdapter(BaseAdapter):
                 raw_data = self.config.get("data")
                 if not raw_data:
                     raise CollectionError("JSON string not provided in config")
-                return raw_data
+                return str(raw_data)
 
             else:
                 raise CollectionError(f"Unsupported source type: {source_type}")
@@ -72,7 +72,7 @@ class JSONAdapter(BaseAdapter):
         """
         errors = []
         warnings = []
-        metrics = {}
+        metrics: dict[str, Any] = {}
 
         # Check if data is valid JSON
         try:
@@ -118,7 +118,7 @@ class JSONAdapter(BaseAdapter):
                 # Example: flatten nested structures (simplified)
                 parsed = self._flatten_dict(parsed)
 
-            return parsed
+            return dict(parsed) if isinstance(parsed, dict) else parsed
 
         except json.JSONDecodeError as e:
             raise TransformationError(f"Failed to parse JSON: {e}")
