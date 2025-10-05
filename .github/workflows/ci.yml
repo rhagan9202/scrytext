@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - '*'
+
+jobs:
+  quality:
+    name: Lint, type-check, and test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: poetry
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.7.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Configure Poetry
+        run: |
+          poetry config installer.no-interaction true
+          poetry config installer.max-workers 4
+
+      - name: Install dependencies
+        run: |
+          poetry install --with dev --no-interaction --no-ansi
+
+      - name: Run Ruff
+        run: poetry run ruff check scry_ingestor tests
+
+      - name: Run Black
+        run: poetry run black --check scry_ingestor tests
+
+      - name: Run MyPy
+        run: poetry run mypy scry_ingestor
+
+      - name: Run Pytest
+        env:
+          PYTHONWARNINGS: error::DeprecationWarning
+        run: poetry run pytest
