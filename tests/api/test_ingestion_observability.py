@@ -58,6 +58,7 @@ def test_successful_ingestion_publishes_event_and_updates_metrics(
         "ingestion_attempts_total",
         {"adapter": "JSONAdapter", "status": "success"},
     )
+    duration_before = _metric_value("processing_duration_seconds_count")
 
     payload = {
         "adapter_type": "json",
@@ -85,8 +86,10 @@ def test_successful_ingestion_publishes_event_and_updates_metrics(
         "ingestion_attempts_total",
         {"adapter": "JSONAdapter", "status": "success"},
     )
+    duration_after = _metric_value("processing_duration_seconds_count")
 
     assert success_after == pytest.approx(success_before + 1)
+    assert duration_after == pytest.approx(duration_before + 1)
 
     assert len(publisher.published) == 1
     published_payload = publisher.published[0]

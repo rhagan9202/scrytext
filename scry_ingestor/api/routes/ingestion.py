@@ -45,6 +45,13 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
             status="success",
         )
 
+        validation_summary = {
+            "is_valid": payload.validation.is_valid,
+            "error_count": len(payload.validation.errors),
+            "warning_count": len(payload.validation.warnings),
+            "metrics": payload.validation.metrics,
+        }
+
         log_ingestion_attempt(
             logger=logger,
             source_id=payload.metadata.source_id,
@@ -52,6 +59,7 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
             duration_ms=payload.metadata.processing_duration_ms,
             status="success",
             correlation_id=request.correlation_id,
+            validation_summary=validation_summary,
         )
 
         get_ingestion_publisher().publish_success(payload)
@@ -77,6 +85,15 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
         record_ingestion_attempt(adapter=request.adapter_type, status="error")
         record_ingestion_error(error_type=e.__class__.__name__)
 
+        error_messages = [str(e)]
+        error_validation_summary = {
+            "is_valid": False,
+            "error_count": len(error_messages),
+            "warning_count": 0,
+            "metrics": {},
+            "errors": error_messages,
+        }
+
         log_ingestion_attempt(
             logger=logger,
             source_id=request.source_config.get("source_id", "unknown"),
@@ -85,6 +102,7 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
             status="error",
             error=str(e),
             correlation_id=request.correlation_id,
+            validation_summary=error_validation_summary,
         )
 
         return IngestionResponse(

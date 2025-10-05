@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 from threading import Lock
@@ -14,7 +15,7 @@ LOG_FORMAT: Final[str] = (
     "%(asctime)s | %(levelname)s | %(name)s | "
     "source_id=%(source_id)s | adapter=%(adapter_type)s | "
     "correlation_id=%(correlation_id)s | status=%(status)s | "
-    "duration_ms=%(duration_ms)s | %(message)s"
+    "duration_ms=%(duration_ms)s | validation=%(validation_summary)s | %(message)s"
 )
 
 DEFAULT_CONTEXT: Final[dict[str, str]] = {
@@ -23,6 +24,7 @@ DEFAULT_CONTEXT: Final[dict[str, str]] = {
     "correlation_id": "-",
     "status": "-",
     "duration_ms": "-",
+    "validation_summary": "-",
 }
 
 _LOG_CONFIGURED = False
@@ -107,6 +109,11 @@ def log_ingestion_attempt(
         **extra_context: Additional context to log
     """
     correlation_id = extra_context.pop("correlation_id", None)
+    validation_summary_raw = extra_context.pop("validation_summary", None)
+
+    summary_value = "-"
+    if validation_summary_raw is not None:
+        summary_value = json.dumps(validation_summary_raw, default=str, sort_keys=True)
 
     structured_context: dict[str, Any] = {
         "source_id": source_id,
@@ -114,17 +121,18 @@ def log_ingestion_attempt(
         "duration_ms": duration_ms,
         "status": status,
         "correlation_id": correlation_id or extra_context.get("correlation_id", "-"),
+        "validation_summary": summary_value,
     }
     additional_context = {
         key: value for key, value in extra_context.items() if key not in structured_context
     }
     structured_context.update(additional_context)
-
-    message_suffix = (
-        f" | context={additional_context}"
-        if additional_context
-        else ""
-    )
+    message_parts = []
+    if summary_value != "-":
+        message_parts.append(f"validation={summary_value}")
+    if additional_context:
+        message_parts.append(f"context={additional_context}")
+    message_suffix = f" | {' | '.join(message_parts)}" if message_parts else ""
 
     status_value = status or "unknown"
     log_method = logger.info if status_value.lower() == "success" else logger.error
