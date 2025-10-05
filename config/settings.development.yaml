@@ -1,0 +1,9 @@
+# Development profile relaxes certain requirements for local workflows.
+messaging:
+  kafka:
+    require_schema_registry: false
+    required_env: []
+    consumer_group: scry-ingestor-dev
+
+secrets_manager:
+  enabled: false

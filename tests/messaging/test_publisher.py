@@ -2,49 +2,48 @@
 
 from __future__ import annotations
 
-import io
-from typing import Any, cast
+from collections.abc import Callable
+from typing import Any
 
-from fastavro import schemaless_reader
+import pytest
 
 from scry_ingestor.messaging.publisher import IngestionEventPublisher
-from scry_ingestor.messaging.schema import INGESTION_EVENT_SCHEMA
 from scry_ingestor.schemas.payload import IngestionMetadata, IngestionPayload, ValidationResult
 from scry_ingestor.utils.config import get_settings
 
 
-class _FakeFuture:
-    def get(self, timeout: float | None = None):  # pragma: no cover - behaves like Kafka future
-        return None
-
-
 class _FakeProducer:
-    def __init__(self, bootstrap_servers):
-        self.bootstrap_servers = bootstrap_servers
-        self.sent: list[tuple[str, bytes]] = []
+    def __init__(self) -> None:
+        self.produced: list[tuple[str, bytes]] = []
+        self.polled: list[float] = []
+        self.closed = False
+        self.flush_timeout: float | None = None
 
-    def send(self, topic: str, value: bytes):  # type: ignore[override]
-        self.sent.append((topic, value))
-        return _FakeFuture()
+    def produce(self, topic: str, value: bytes, on_delivery: Callable | None = None) -> None:
+        self.produced.append((topic, value))
+        if on_delivery is not None:  # pragma: no cover - normally not invoked in tests
+            on_delivery(None, None)
 
-    def flush(self) -> None:  # pragma: no cover - no-op for fake producer
+    def poll(self, timeout: float) -> None:
+        self.polled.append(timeout)
+
+    def flush(self, timeout: float | None = None) -> None:
+        self.flush_timeout = timeout
+
+    def close(self) -> None:
+        self.closed = True
+
+
+class _NoOpAdminClient:
+    def __init__(self, *_args, **_kwargs) -> None:  # pragma: no cover - ensure compatibility
+        pass
+
+    def list_topics(self, timeout: float) -> None:
         return None
 
-    def close(self) -> None:  # pragma: no cover - no-op for fake producer
-        return None
 
-
-def test_publish_success_serializes_avro(monkeypatch):
-    """Publisher should serialize ingestion payloads to Avro and send them to Kafka."""
-
-    monkeypatch.setenv("SCRY_KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-    get_settings.cache_clear()
-
-    monkeypatch.setattr("scry_ingestor.messaging.publisher.KafkaProducer", _FakeProducer)
-
-    publisher = IngestionEventPublisher()
-
-    payload = IngestionPayload(
+def _build_payload() -> IngestionPayload:
+    return IngestionPayload(
         data={"records": 10},
         metadata=IngestionMetadata(
             source_id="source-123",
@@ -62,26 +61,85 @@ def test_publish_success_serializes_avro(monkeypatch):
         ),
     )
 
-    publisher.publish_success(payload)
 
-    assert publisher._producer is not None  # type: ignore[attr-defined]
-    assert len(publisher._producer.sent) == 1  # type: ignore[attr-defined]
+def test_publish_success_uses_serializer_and_producer(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Publisher should invoke serializer and send bytes to Kafka."""
 
-    topic, serialized = publisher._producer.sent[0]  # type: ignore[attr-defined]
-    assert topic == "scry.ingestion.complete"
+    monkeypatch.setenv("SCRY_KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    get_settings.cache_clear()
 
-    buffer = io.BytesIO(serialized)
-    record = cast(
-        dict[str, Any],
-        schemaless_reader(buffer, INGESTION_EVENT_SCHEMA, INGESTION_EVENT_SCHEMA),
+    captured: dict[str, Any] = {}
+
+    def serializer(record: dict[str, Any], _context) -> bytes:
+        captured["record"] = record
+        return b"encoded-record"
+
+    fake_producer = _FakeProducer()
+
+    publisher = IngestionEventPublisher(
+        producer=fake_producer,
+        serializer=serializer,
+        schema_registry_client=object(),
+        topic="test-topic",
     )
 
-    assert record["correlation_id"] == "corr-xyz"
-    assert record["adapter"] == "JSONAdapter"
-    assert record["duration_ms"] == 150
-    assert record["validation"]["error_count"] == 0
-    assert record["validation"]["warning_count"] == 1
-    assert record["metrics"]["record_count"] == "10"
+    payload = _build_payload()
+    publisher.publish_success(payload)
+
+    assert fake_producer.produced == [("test-topic", b"encoded-record")]
+    assert captured["record"]["adapter"] == "JSONAdapter"
+    assert captured["record"]["validation"]["warning_count"] == 1
 
     publisher.close()
+    assert fake_producer.closed is True
+    assert fake_producer.flush_timeout == pytest.approx(
+        get_settings().kafka_publish_timeout_seconds
+    )
+
     get_settings.cache_clear()
+
+
+def test_health_status_reflects_missing_schema_registry(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Health should report degraded when schema registry is unavailable."""
+
+    monkeypatch.setenv("SCRY_KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    get_settings.cache_clear()
+
+    fake_producer = _FakeProducer()
+    publisher = IngestionEventPublisher(
+        producer=fake_producer,
+        schema_registry_client=None,
+        serializer=None,
+        topic="health-topic",
+    )
+
+    status = publisher.health_status()
+    assert status["status"] == "degraded"
+
+    get_settings.cache_clear()
+
+
+def test_health_status_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Health should report ok when producer and serializer are available."""
+
+    monkeypatch.setenv("SCRY_KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+    get_settings.cache_clear()
+
+    fake_producer = _FakeProducer()
+    def serializer(record: dict[str, Any], ctx: Any) -> bytes:
+        return b"encoded"
+
+    monkeypatch.setattr("scry_ingestor.messaging.publisher.AdminClient", _NoOpAdminClient)
+
+    publisher = IngestionEventPublisher(
+        producer=fake_producer,
+        serializer=serializer,
+        schema_registry_client=object(),
+        topic="health-topic",
+    )
+
+    status = publisher.health_status()
+    assert status["status"] == "ok"
+
+    get_settings.cache_clear()
+

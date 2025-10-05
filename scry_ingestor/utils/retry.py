@@ -133,8 +133,10 @@ def _parse_retry_after(value: str | None) -> float | None:
     try:
         parsed = parsedate_to_datetime(trimmed)
     except (TypeError, ValueError):  # pragma: no cover - defensive
+        logger.warning("Failed to parse Retry-After header: %s", trimmed)
         return None
     if parsed is None:
+        logger.warning("Failed to parse Retry-After header: %s", trimmed)
         return None
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
@@ -222,7 +224,17 @@ async def execute_with_retry(
         retry_error_callback=_retry_error_callback,
     ):
         with attempt:
-            response = await send()
+            try:
+                response = await send()
+            except httpx.HTTPStatusError as exc:
+                error_response = exc.response
+                if (
+                    error_response is not None
+                    and retry_config.should_retry_response(error_response)
+                ):
+                    raise RetryableStatusError(error_response) from exc
+                raise
+
             if retry_config.should_retry_response(response):
                 raise RetryableStatusError(response)
 

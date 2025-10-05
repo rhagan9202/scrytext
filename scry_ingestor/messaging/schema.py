@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from ..schemas.payload import IngestionPayload
@@ -32,6 +33,9 @@ INGESTION_EVENT_SCHEMA: dict[str, Any] = {
         {"name": "metrics", "type": {"type": "map", "values": "string"}, "default": {}},
     ],
 }
+
+INGESTION_EVENT_SCHEMA_STR = json.dumps(INGESTION_EVENT_SCHEMA)
+INGESTION_EVENT_SUBJECT_SUFFIX = "-value"
 
 
 def build_ingestion_event_record(

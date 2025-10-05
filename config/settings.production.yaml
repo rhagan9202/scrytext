@@ -1,0 +1,18 @@
+# Production overrides add stricter requirements and enable secrets management.
+required_env:
+  - SCRY_REDIS_URL
+
+messaging:
+  kafka:
+    topic: scry.ingestion.complete
+    consumer_group: scry-ingestor-prod
+    required_env:
+      - SCRY_KAFKA_SCHEMA_REGISTRY_URL
+      - SCRY_KAFKA_SASL_USERNAME
+      - SCRY_KAFKA_SASL_PASSWORD
+
+secrets_manager:
+  enabled: true
+  secret_name: scry-ingestor/production
+  region: us-east-1
+  overwrite_env: true

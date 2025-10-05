@@ -1,0 +1,20 @@
+# Shared defaults applied to every environment profile.
+version: 1
+environment: base
+
+# Environment variables that must be present regardless of profile.
+required_env:
+  - SCRY_DATABASE_URL
+  - SCRY_API_KEYS
+
+messaging:
+  kafka:
+    topic: scry.ingestion.complete
+    consumer_group: scry-ingestor-consumer
+    require_schema_registry: true
+    required_env:
+      - SCRY_KAFKA_BOOTSTRAP_SERVERS
+
+secrets_manager:
+  enabled: false
+  overwrite_env: false

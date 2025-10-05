@@ -7,7 +7,11 @@ import os
 import pytest
 
 from scry_ingestor.models.base import reset_engine
-from scry_ingestor.utils.config import get_settings
+from scry_ingestor.utils.config import (
+    ConfigurationError,
+    get_service_configuration,
+    get_settings,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -20,10 +24,18 @@ def _ensure_database_url(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pyte
     if os.getenv("SCRY_API_KEYS") is None:
         monkeypatch.setenv("SCRY_API_KEYS", '["test-key"]')
 
-    get_settings.cache_clear()
+    get_settings(reload=True)
+    try:
+        get_service_configuration(reload=True)
+    except ConfigurationError:
+        pass
     yield
     reset_engine()
-    get_settings.cache_clear()
+    get_settings(reload=True)
+    try:
+        get_service_configuration(reload=True)
+    except ConfigurationError:
+        pass
 
 
 @pytest.fixture

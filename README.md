@@ -46,6 +46,57 @@ cp .env.example .env
 The application validates these settings on startup and will exit if they are
 missing, preventing partially configured deployments.
 
+#### Kafka messaging configuration
+
+Publishing ingestion completion events now relies on Confluent Kafka with the Schema
+Registry client. Set the following environment variables to enable the publisher and the
+consumer worker:
+
+- `SCRY_KAFKA_BOOTSTRAP_SERVERS` – Comma-separated Kafka broker list (required to publish).
+- `SCRY_KAFKA_TOPIC` – Topic for ingestion events (defaults to `scry.ingestion.complete`).
+- `SCRY_KAFKA_CONSUMER_GROUP` – Consumer group ID for downstream processing (defaults to `scry-ingestor-consumer`).
+- `SCRY_KAFKA_SCHEMA_REGISTRY_URL` – URL for Confluent Schema Registry.
+- `SCRY_KAFKA_SCHEMA_REGISTRY_API_KEY` / `SCRY_KAFKA_SCHEMA_REGISTRY_API_SECRET` – Optional when using API key auth.
+- `SCRY_KAFKA_SECURITY_PROTOCOL`, `SCRY_KAFKA_SASL_MECHANISM`, `SCRY_KAFKA_SASL_USERNAME`, `SCRY_KAFKA_SASL_PASSWORD` – Configure when SASL or TLS is required.
+
+If the Schema Registry settings are missing, the publisher gracefully degrades and skips
+event emission while the `/health` endpoint reports the Kafka subsystem status as
+`degraded`. The Poetry environment now includes the `confluent-kafka`, `attrs`, `orjson`,
+`cachetools`, and `authlib` packages to support the Schema Registry client.
+
+#### Environment configuration templates
+
+Runtime configuration now loads from layered YAML templates in `config/`:
+
+- `settings.base.yaml` &mdash; shared defaults and required environment variables for every profile.
+- `settings.development.yaml` &mdash; overrides that relax requirements for local development.
+- `settings.production.yaml` &mdash; production-focused overrides that enforce Kafka security and Redis requirements.
+
+Choose the active profile with `SCRY_ENVIRONMENT` (or explicitly set `SCRY_CONFIG_PROFILE`).
+At startup the service loads `settings.base.yaml`, merges the environment-specific override,
+applies environment variables, and validates the result. Missing config files or invalid
+structures raise a `ConfigurationError` before the API starts accepting traffic.
+
+#### Secrets management via AWS Secrets Manager
+
+The configuration loader can pull sensitive values from AWS Secrets Manager before
+validating the runtime environment.
+
+1. Enable the integration via environment variables or the YAML template:
+  - `SCRY_SECRETS_MANAGER__ENABLED=true`
+  - `SCRY_SECRETS_MANAGER__SECRET_NAME=scry-ingestor/production`
+  - Optionally set `SCRY_SECRETS_MANAGER__REGION`, `SCRY_SECRETS_MANAGER__PROFILE`, or
+    `SCRY_SECRETS_MANAGER__ENDPOINT_URL`.
+2. Store secrets in AWS Secrets Manager as a JSON object where the keys are environment
+  variables (for example `{"SCRY_DATABASE_URL": "...", "SCRY_API_KEYS": "..."}`).
+3. On startup the service retrieves the secret, injects any missing variables into the
+  environment, reloads `GlobalSettings`, and validates all required values. Set
+  `overwrite_env: true` in the template when the secret should win over pre-set values.
+
+Validation happens on every start of the API (and other entry points that call
+`ensure_runtime_configuration`), guaranteeing that required variables defined in the
+templates or the secrets configuration are present before processors go live.
+
 ### Installation
 
 #### As a Python Package
