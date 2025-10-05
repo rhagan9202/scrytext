@@ -9,8 +9,9 @@ import yaml
 from pydantic import (
     BaseModel,
     ConfigDict,
-    field_validator,
+    Field,
     ValidationError as PydanticValidationError,
+    field_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -118,6 +119,9 @@ class GlobalSettings(BaseSettings):
     config_dir: Path = Path("config")
     fixtures_dir: Path = Path("tests/fixtures")
     aws: AWSSettings = AWSSettings()
+    api_keys: list[str] = Field(default_factory=list)
+    kafka_bootstrap_servers: str | None = None
+    kafka_topic: str = "scry.ingestion.complete"
 
     @field_validator("log_level")
     @classmethod
@@ -125,6 +129,20 @@ class GlobalSettings(BaseSettings):
         """Ensure log level values are uppercase for logging config."""
 
         return value.upper()
+
+    @field_validator("api_keys", mode="before")
+    @classmethod
+    def _parse_api_keys(cls, value: Any) -> list[str]:
+        """Support comma-separated strings or iterables for API key configuration."""
+
+        if value is None:
+            return []
+        if isinstance(value, str):
+            keys = [item.strip() for item in value.split(",")]
+            return [key for key in keys if key]
+        if isinstance(value, (list, tuple, set)):
+            return [str(item) for item in value if str(item).strip()]
+        raise ValueError("api_keys must be a comma-separated string or iterable of strings")
 
     @field_validator("config_dir", "fixtures_dir", mode="before")
     @classmethod

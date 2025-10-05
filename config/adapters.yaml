@@ -54,6 +54,10 @@ examples:
       include: "summary"
     headers:
       Authorization: "Bearer ${API_TOKEN}"
+    allowed_hosts:
+      - "api.example.com"
+    follow_redirects: false
+    max_content_length: 5242880
     validation:
       expected_statuses: [200, 202]
     transformation:
@@ -67,6 +71,11 @@ examples:
     validation:
       required_selectors:
         - "article h1"
+    allowed_hosts:
+      - "example.com"
+      - "*.example.com"
+    follow_redirects: false
+    max_content_length: 2097152
     transformation:
       selectors:
         headlines: "article h1"

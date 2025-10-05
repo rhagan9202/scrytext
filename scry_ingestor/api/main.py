@@ -1,9 +1,8 @@
 """FastAPI application for Scry_Ingestor service."""
 
 from contextlib import asynccontextmanager
-from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from ..exceptions import ScryIngestorError
@@ -43,7 +42,8 @@ async def scry_exception_handler(request: Request, exc: ScryIngestorError) -> JS
 
 
 # Import routers
-from .routes import health, ingestion  # noqa: E402
+from .routes import health, ingestion, metrics  # noqa: E402
 
 app.include_router(health.router, tags=["health"])
 app.include_router(ingestion.router, prefix="/api/v1", tags=["ingestion"])
+app.include_router(metrics.router, tags=["monitoring"])

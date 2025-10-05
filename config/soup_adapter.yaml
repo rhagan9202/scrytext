@@ -11,6 +11,10 @@ timeout: 30  # seconds
 headers: {}
 query_params: {}
 parser: "html.parser"  # Options: html.parser, lxml, html5lib
+follow_redirects: false
+max_content_length: 2097152  # 2 MB hard limit
+allowed_hosts: []  # Optional host allowlist, supports wildcards like "*.example.com"
+allowed_url_patterns: []  # Optional regex patterns evaluated against the full URL
 
 # Validation options
 validation:

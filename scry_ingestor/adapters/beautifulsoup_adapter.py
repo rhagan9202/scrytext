@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
+from fnmatch import fnmatch
 from typing import Any
 
 import httpx
@@ -44,6 +46,11 @@ class BeautifulSoupAdapter(BaseAdapter):
             raise CollectionError(f"Unsupported HTTP method: {method}")
 
         timeout = self.config.get("timeout", 30.0)
+        follow_redirects = bool(self.config.get("follow_redirects", False))
+        max_content_length = self._parse_positive_int(
+            self.config.get("max_content_length"),
+            "max_content_length",
+        )
         headers = self._ensure_mapping(
             self.config.get("headers"),
             error_cls=CollectionError,
@@ -55,7 +62,10 @@ class BeautifulSoupAdapter(BaseAdapter):
             context="query parameter configuration",
         )
 
-        client_kwargs: dict[str, Any] = {"timeout": timeout}
+        client_kwargs: dict[str, Any] = {
+            "timeout": timeout,
+            "follow_redirects": follow_redirects,
+        }
         base_url = self.config.get("base_url")
         if base_url:
             client_kwargs["base_url"] = base_url
@@ -63,6 +73,9 @@ class BeautifulSoupAdapter(BaseAdapter):
         transport = self.config.get("_transport")
         if transport is not None:
             client_kwargs["transport"] = transport
+
+        target_url = self._resolve_request_url(url, base_url)
+        self._enforce_url_allowlist(target_url)
 
         try:
             async with httpx.AsyncClient(**client_kwargs) as client:
@@ -73,6 +86,16 @@ class BeautifulSoupAdapter(BaseAdapter):
             raise CollectionError(f"HTTP request failed: {exc}") from exc
 
         await response.aread()
+
+        self._enforce_url_allowlist(response.request.url)
+
+        if not follow_redirects and response.is_redirect:
+            raise CollectionError("Redirect responses are disallowed by configuration")
+
+        if max_content_length is not None and len(response.content) > max_content_length:
+            raise CollectionError(
+                "Response body exceeded configured max_content_length guardrail"
+            )
         try:
             elapsed_ms = int(response.elapsed.total_seconds() * 1000)
         except (AttributeError, RuntimeError):
@@ -229,3 +252,94 @@ class BeautifulSoupAdapter(BaseAdapter):
         if isinstance(value, Mapping):
             return dict(value)
         raise error_cls(f"Expected mapping for {context}")
+
+    def _parse_positive_int(self, raw_value: Any, key: str) -> int | None:
+        """Convert config values to a positive integer if provided."""
+
+        if raw_value in (None, ""):
+            return None
+        try:
+            value = int(raw_value)
+        except (TypeError, ValueError) as exc:  # pragma: no cover - defensive
+            raise CollectionError(f"{key} must be an integer") from exc
+        if value <= 0:
+            raise CollectionError(f"{key} must be greater than zero")
+        return value
+
+    def _resolve_request_url(self, url: str, base_url: str | None) -> httpx.URL:
+        """Resolve and validate the absolute request URL."""
+
+        try:
+            base = httpx.URL(base_url) if base_url else None
+        except (TypeError, ValueError) as exc:
+            raise CollectionError(f"Invalid base_url: {exc}") from exc
+
+        try:
+            target = httpx.URL(url)
+        except (TypeError, ValueError) as exc:
+            raise CollectionError(f"Invalid URL: {exc}") from exc
+
+        if target.is_relative_url:
+            if base is None:
+                raise CollectionError("Relative URLs require a base_url configuration")
+            target = base.join(str(target))
+
+        if target.scheme not in {"http", "https"}:
+            raise CollectionError("Only HTTP(S) URLs are supported")
+
+        return target
+
+    def _enforce_url_allowlist(self, url: httpx.URL) -> None:
+        """Ensure the resolved URL is permitted by allowlist configuration."""
+
+        host_patterns = self._normalized_sequence("allowed_hosts")
+        regex_patterns = self._compiled_patterns("allowed_url_patterns")
+
+        if not host_patterns and not regex_patterns:
+            return
+
+        host = (url.host or "").lower()
+        host_match = any(fnmatch(host, pattern) for pattern in host_patterns)
+        regex_match = any(pattern.search(str(url)) for pattern in regex_patterns)
+
+        if not host_match and not regex_match:
+            raise CollectionError(
+                f"URL '{url}' is not permitted by allowlist configuration"
+            )
+
+    def _normalized_sequence(self, key: str) -> list[str]:
+        """Return a normalized list of non-empty lowercase strings from config."""
+
+        raw_value = self.config.get(key)
+        if raw_value is None:
+            return []
+        if not isinstance(raw_value, (list, tuple, set)):
+            raise CollectionError(f"{key} must be a sequence of strings")
+
+        normalized: list[str] = []
+        for item in raw_value:
+            if not isinstance(item, str) or not item.strip():
+                raise CollectionError(f"{key} entries must be non-empty strings")
+            normalized.append(item.strip().lower())
+        return normalized
+
+    def _compiled_patterns(self, key: str) -> list[re.Pattern[str]]:
+        """Compile regex patterns declared in config."""
+
+        raw_value = self.config.get(key)
+        if raw_value is None:
+            return []
+        if not isinstance(raw_value, (list, tuple, set)):
+            raise CollectionError(f"{key} must be a sequence of regex patterns")
+
+        compiled: list[re.Pattern[str]] = []
+        for pattern in raw_value:
+            if not isinstance(pattern, str) or pattern.strip() == "":
+                raise CollectionError(f"{key} entries must be non-empty strings")
+            try:
+                compiled.append(re.compile(pattern))
+            except re.error as exc:
+                raise CollectionError(
+                    f"Invalid regex in {key}: {pattern} ({exc})"
+                ) from exc
+        return compiled

@@ -174,3 +174,95 @@ async def test_process_full_pipeline(base_config: dict[str, Any]) -> None:
     assert payload.metadata.adapter_type == "BeautifulSoupAdapter"
     assert payload.validation.is_valid is True
     assert payload.data["extracted"]["headlines"] == ["Pipeline Headline"]
+
+
+@pytest.mark.asyncio
+async def test_collect_disallows_unlisted_host(base_config: dict[str, Any]) -> None:
+  """Collection should reject URLs outside the configured allowlist."""
+
+  base_config["allowed_hosts"] = ["example.com"]
+  base_config["url"] = "https://unauthorized.example.net/page"
+  base_config["_transport"] = build_transport("<html></html>")
+
+  adapter = BeautifulSoupAdapter(base_config)
+
+  with pytest.raises(CollectionError, match="not permitted"):
+    await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_allows_regex_pattern(base_config: dict[str, Any]) -> None:
+  """Regex allowlists should permit matching URLs."""
+
+  base_config["allowed_url_patterns"] = [r"https://example\.com/.*"]
+  base_config["_transport"] = build_transport("<html></html>")
+
+  adapter = BeautifulSoupAdapter(base_config)
+  raw = await adapter.collect()
+
+  assert raw["status_code"] == 200
+
+
+@pytest.mark.asyncio
+async def test_collect_enforces_max_content_length(base_config: dict[str, Any]) -> None:
+  """Responses exceeding max_content_length should raise CollectionError."""
+
+  base_config["max_content_length"] = 16
+  big_html = "<html><body>" + ("x" * 100) + "</body></html>"
+  base_config["_transport"] = build_transport(big_html)
+
+  adapter = BeautifulSoupAdapter(base_config)
+
+  with pytest.raises(CollectionError, match="max_content_length"):
+    await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_blocks_redirects_when_disallowed(base_config: dict[str, Any]) -> None:
+  """Redirect responses should raise when redirects are disabled."""
+
+  base_config["allowed_hosts"] = ["example.com"]
+  base_config["url"] = "https://example.com/redirect"
+
+  async def handler(request: httpx.Request) -> httpx.Response:
+    return httpx.Response(
+      302,
+      headers={"Location": "https://example.com/final"},
+      request=request,
+    )
+
+  base_config["_transport"] = httpx.MockTransport(handler)
+
+  adapter = BeautifulSoupAdapter(base_config)
+
+  with pytest.raises(CollectionError, match="Redirect responses"):
+    await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_revalidates_allowlist_after_redirect(base_config: dict[str, Any]) -> None:
+  """Allowlist enforcement should run after following redirects."""
+
+  base_config["allowed_hosts"] = ["example.com"]
+  base_config["url"] = "https://example.com/redirect"
+  base_config["follow_redirects"] = True
+
+  async def handler(request: httpx.Request) -> httpx.Response:
+    if request.url.host == "example.com":
+      return httpx.Response(
+        302,
+        headers={"Location": "https://malicious.example.net/final"},
+        request=request,
+      )
+    return httpx.Response(
+      200,
+      text="<html><body>ok</body></html>",
+      request=request,
+    )
+
+  base_config["_transport"] = httpx.MockTransport(handler)
+
+  adapter = BeautifulSoupAdapter(base_config)
+
+  with pytest.raises(CollectionError, match="allowlist"):
+    await adapter.collect()

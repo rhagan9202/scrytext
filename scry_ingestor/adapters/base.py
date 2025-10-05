@@ -1,16 +1,16 @@
 """Base adapter abstract class for all data source adapters."""
 
 import asyncio
-import logging
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any, TypeVar
 
+from ..monitoring.metrics import observe_processing_duration
 from ..schemas.payload import IngestionMetadata, IngestionPayload, ValidationResult
+from ..utils.logging import setup_logger
 
-
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 T = TypeVar("T")
@@ -101,6 +101,7 @@ class BaseAdapter(ABC):
             IngestionPayload with data, metadata, and validation results
         """
         start_time = datetime.now(timezone.utc)
+        duration_ms: int | None = None
 
         raw_data: Any | None = None
         try:
@@ -116,6 +117,8 @@ class BaseAdapter(ABC):
             # Build metadata as IngestionMetadata object
             end_time = datetime.now(timezone.utc)
             duration_ms = int((end_time - start_time).total_seconds() * 1000)
+
+            observe_processing_duration((end_time - start_time).total_seconds())
 
             metadata = IngestionMetadata(
                 source_id=self.source_id,
@@ -134,3 +137,7 @@ class BaseAdapter(ABC):
                     await self.cleanup(raw_data)
                 except Exception as cleanup_error:  # pragma: no cover - best effort cleanup
                     logger.debug("Adapter cleanup failed: %s", cleanup_error, exc_info=True)
+
+            if duration_ms is None:
+                end_time = datetime.now(timezone.utc)
+                observe_processing_duration((end_time - start_time).total_seconds())

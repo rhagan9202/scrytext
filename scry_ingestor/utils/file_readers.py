@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from ..exceptions import CollectionError
+from .logging import setup_logger
 
 DEFAULT_CHUNK_SIZE = 1024 * 1024  # 1MB
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def _ensure_mapping(options: Mapping[str, Any] | None, context: str) -> dict[str, Any]:

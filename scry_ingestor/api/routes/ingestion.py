@@ -1,14 +1,17 @@
 """Ingestion API endpoints."""
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from ...adapters import get_adapter
 from ...exceptions import AdapterNotFoundError, ScryIngestorError
+from ...messaging.publisher import get_ingestion_publisher
+from ...monitoring.metrics import record_ingestion_attempt, record_ingestion_error
 from ...schemas.payload import IngestionRequest, IngestionResponse
 from ...utils.logging import log_ingestion_attempt, setup_logger
+from ..dependencies import require_api_key
 
 logger = setup_logger(__name__)
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_api_key)])
 
 
 @router.post("/ingest", response_model=IngestionResponse)
@@ -37,6 +40,11 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
             payload.metadata.correlation_id = request.correlation_id
 
         # Log successful ingestion
+        record_ingestion_attempt(
+            adapter=payload.metadata.adapter_type,
+            status="success",
+        )
+
         log_ingestion_attempt(
             logger=logger,
             source_id=payload.metadata.source_id,
@@ -45,6 +53,8 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
             status="success",
             correlation_id=request.correlation_id,
         )
+
+        get_ingestion_publisher().publish_success(payload)
 
         return IngestionResponse(
             status="success",
@@ -55,6 +65,8 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
 
     except AdapterNotFoundError as e:
         logger.error(f"Adapter not found: {e}")
+        record_ingestion_attempt(adapter=request.adapter_type, status="error")
+        record_ingestion_error(error_type=e.__class__.__name__)
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
@@ -62,6 +74,9 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
 
     except ScryIngestorError as e:
         # Log failed ingestion
+        record_ingestion_attempt(adapter=request.adapter_type, status="error")
+        record_ingestion_error(error_type=e.__class__.__name__)
+
         log_ingestion_attempt(
             logger=logger,
             source_id=request.source_config.get("source_id", "unknown"),

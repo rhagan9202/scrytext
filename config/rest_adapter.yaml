@@ -11,6 +11,10 @@ headers: {}
 query_params: {}
 body: null
 body_format: auto  # auto | json | text | bytes
+follow_redirects: false
+max_content_length: 5242880  # 5 MB hard limit
+allowed_hosts: []  # Optional host allowlist, supports wildcards like "*.example.com"
+allowed_url_patterns: []  # Optional regex patterns evaluated against the full URL
 
 # Authentication options (extend as needed)
 auth:

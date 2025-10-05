@@ -159,3 +159,113 @@ def test_invalid_response_format_raises_configuration_error(
 
     with pytest.raises(ConfigurationError):
         RESTAdapter(base_config)
+
+
+@pytest.mark.asyncio
+async def test_collect_disallows_unlisted_host(base_config: dict[str, Any]) -> None:
+    """Collection should reject endpoints outside the configured allowlist."""
+
+    base_config["allowed_hosts"] = ["api.example.com"]
+    base_config["endpoint"] = "https://unauthorized.example.com/data"
+    base_config["_transport"] = build_transport(200, {"ok": True})
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="not permitted"):
+        await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_allows_regex_pattern(base_config: dict[str, Any]) -> None:
+    """Regex allowlists should permit matching URLs."""
+
+    base_config["allowed_url_patterns"] = [r"https://api\.example\.com/.*"]
+    base_config["_transport"] = build_transport(200, {"items": []})
+
+    adapter = RESTAdapter(base_config)
+    raw = await adapter.collect()
+
+    assert raw["status_code"] == 200
+
+
+@pytest.mark.asyncio
+async def test_collect_enforces_max_content_length(base_config: dict[str, Any]) -> None:
+    """Responses larger than max_content_length should raise CollectionError."""
+
+    base_config["max_content_length"] = 4
+    base_config["_transport"] = build_transport(
+        200,
+        b"excess",
+        headers={"content-type": "text/plain"},
+    )
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="max_content_length"):
+        await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_blocks_redirects_when_disallowed(base_config: dict[str, Any]) -> None:
+    """Redirect responses should raise when redirects are disabled."""
+
+    base_config["allowed_hosts"] = ["api.example.com"]
+    base_config["endpoint"] = "https://api.example.com/redirect"
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            302,
+            headers={"Location": "https://api.example.com/final"},
+            request=request,
+        )
+
+    base_config["_transport"] = httpx.MockTransport(handler)
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="Redirect responses"):
+        await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_revalidates_allowlist_after_redirect(base_config: dict[str, Any]) -> None:
+    """Allowlist enforcement should apply after following redirects."""
+
+    base_config["allowed_hosts"] = ["api.example.com"]
+    base_config["endpoint"] = "https://api.example.com/redirect"
+    base_config["follow_redirects"] = True
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "api.example.com":
+            return httpx.Response(
+                302,
+                headers={"Location": "https://malicious.example.net/final"},
+                request=request,
+            )
+        return httpx.Response(
+            200,
+            json={"status": "ok"},
+            request=request,
+        )
+
+    base_config["_transport"] = httpx.MockTransport(handler)
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="allowlist"):
+        await adapter.collect()
+
+
+@pytest.mark.asyncio
+async def test_collect_raises_on_timeout(base_config: dict[str, Any]) -> None:
+    """HTTP timeouts should surface as CollectionError instances."""
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.TimeoutException("simulated timeout")
+
+    base_config["_transport"] = httpx.MockTransport(handler)
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="timed out"):
+        await adapter.collect()
