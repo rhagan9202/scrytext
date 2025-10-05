@@ -34,29 +34,14 @@ def build_transport(
     return httpx.MockTransport(handler)
 
 
-@pytest.fixture
-def base_config() -> dict[str, Any]:
-    """Base REST adapter configuration used across tests."""
-
-    return {
-        "source_id": "rest-test",
-        "endpoint": "https://api.example.com/data",
-        "method": "GET",
-        "query_params": {"limit": "10"},
-        "headers": {"Accept": "application/json"},
-        "validation": {"expected_statuses": [200]},
-        "transformation": {"response_format": "json"},
-    }
-
-
 @pytest.mark.asyncio
-async def test_collect_success(base_config: dict[str, Any]) -> None:
+async def test_collect_success(rest_adapter_config: dict[str, Any]) -> None:
     """Collect should perform an HTTP request and capture response metadata."""
 
     transport = build_transport(200, {"items": []})
-    base_config["_transport"] = transport
+    rest_adapter_config["_transport"] = transport
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
 
     assert raw["status_code"] == 200
@@ -66,7 +51,9 @@ async def test_collect_success(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_collect_uses_cache_for_repeat_requests(base_config: dict[str, Any]) -> None:
+async def test_collect_uses_cache_for_repeat_requests(
+    rest_adapter_config: dict[str, Any]
+) -> None:
     """Enabling cache should prevent duplicate upstream calls for identical requests."""
 
     call_count = 0
@@ -76,16 +63,16 @@ async def test_collect_uses_cache_for_repeat_requests(base_config: dict[str, Any
         call_count += 1
         return httpx.Response(200, json={"sequence": call_count}, request=request)
 
-    base_config["cache"] = {
+    rest_adapter_config["cache"] = {
         "enabled": True,
         "ttl_seconds": 60,
         "max_size": 16,
         "methods": ["GET"],
         "vary_headers": [],
     }
-    base_config["_transport"] = httpx.MockTransport(handler)
+    rest_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     first = await adapter.collect()
     second = await adapter.collect()
@@ -95,7 +82,9 @@ async def test_collect_uses_cache_for_repeat_requests(base_config: dict[str, Any
 
 
 @pytest.mark.asyncio
-async def test_collect_skips_cache_for_non_cached_methods(base_config: dict[str, Any]) -> None:
+async def test_collect_skips_cache_for_non_cached_methods(
+    rest_adapter_config: dict[str, Any]
+) -> None:
     """Requests using methods not listed in cache.methods should not be cached."""
 
     call_count = 0
@@ -105,16 +94,16 @@ async def test_collect_skips_cache_for_non_cached_methods(base_config: dict[str,
         call_count += 1
         return httpx.Response(200, json={"sequence": call_count}, request=request)
 
-    base_config["method"] = "POST"
-    base_config["cache"] = {
+    rest_adapter_config["method"] = "POST"
+    rest_adapter_config["cache"] = {
         "enabled": True,
         "ttl_seconds": 60,
         "max_size": 16,
         "methods": ["GET"],
     }
-    base_config["_transport"] = httpx.MockTransport(handler)
+    rest_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     first = await adapter.collect()
     second = await adapter.collect()
@@ -124,24 +113,24 @@ async def test_collect_skips_cache_for_non_cached_methods(base_config: dict[str,
 
 
 @pytest.mark.asyncio
-async def test_collect_invalid_method(base_config: dict[str, Any]) -> None:
+async def test_collect_invalid_method(rest_adapter_config: dict[str, Any]) -> None:
     """Unsupported HTTP methods should raise CollectionError."""
 
-    base_config["method"] = "TRACE"
-    adapter = RESTAdapter(base_config)
+    rest_adapter_config["method"] = "TRACE"
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError):
         await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_validate_status_mismatch(base_config: dict[str, Any]) -> None:
+async def test_validate_status_mismatch(rest_adapter_config: dict[str, Any]) -> None:
     """Validation should mark responses with unexpected status codes as invalid."""
 
     transport = build_transport(500, {"error": "server"})
-    base_config["_transport"] = transport
+    rest_adapter_config["_transport"] = transport
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
     validation = await adapter.validate(raw)
 
@@ -150,13 +139,13 @@ async def test_validate_status_mismatch(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_transform_json_body(base_config: dict[str, Any]) -> None:
+async def test_transform_json_body(rest_adapter_config: dict[str, Any]) -> None:
     """Transform should parse JSON bodies when requested."""
 
     payload = {"items": [1, 2, 3]}
-    base_config["_transport"] = build_transport(200, payload)
+    rest_adapter_config["_transport"] = build_transport(200, payload)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
     transformed = await adapter.transform(raw)
 
@@ -164,14 +153,14 @@ async def test_transform_json_body(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_transform_text_body(base_config: dict[str, Any]) -> None:
+async def test_transform_text_body(rest_adapter_config: dict[str, Any]) -> None:
     """Transform should handle text responses when configured."""
 
     transport = build_transport(200, "ok", headers={"content-type": "text/plain"})
-    base_config["_transport"] = transport
-    base_config["transformation"] = {"response_format": "text"}
+    rest_adapter_config["_transport"] = transport
+    rest_adapter_config["transformation"] = {"response_format": "text"}
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
     transformed = await adapter.transform(raw)
 
@@ -179,14 +168,14 @@ async def test_transform_text_body(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_transform_invalid_json_raises(base_config: dict[str, Any]) -> None:
+async def test_transform_invalid_json_raises(rest_adapter_config: dict[str, Any]) -> None:
     """Invalid JSON should raise a TransformationError when JSON is required."""
 
     transport = build_transport(200, "not-json", headers={"content-type": "application/json"})
-    base_config["_transport"] = transport
-    base_config["transformation"] = {"response_format": "json"}
+    rest_adapter_config["_transport"] = transport
+    rest_adapter_config["transformation"] = {"response_format": "json"}
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
 
     with pytest.raises(TransformationError):
@@ -194,13 +183,13 @@ async def test_transform_invalid_json_raises(base_config: dict[str, Any]) -> Non
 
 
 @pytest.mark.asyncio
-async def test_process_full_pipeline(base_config: dict[str, Any]) -> None:
+async def test_process_full_pipeline(rest_adapter_config: dict[str, Any]) -> None:
     """End-to-end process should return payload with metadata and validation."""
 
     payload = {"message": "success"}
-    base_config["_transport"] = build_transport(200, payload)
+    rest_adapter_config["_transport"] = build_transport(200, payload)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     result = await adapter.process()
 
     assert result.data["body"] == payload
@@ -209,18 +198,18 @@ async def test_process_full_pipeline(base_config: dict[str, Any]) -> None:
 
 
 def test_invalid_response_format_raises_configuration_error(
-    base_config: dict[str, Any]
+    rest_adapter_config: dict[str, Any]
 ) -> None:
     """Unsupported response formats should be caught upon adapter creation."""
 
-    base_config["transformation"] = {"response_format": "xml"}
+    rest_adapter_config["transformation"] = {"response_format": "xml"}
 
     with pytest.raises(ConfigurationError):
-        RESTAdapter(base_config)
+        RESTAdapter(rest_adapter_config)
 
 
 @pytest.mark.asyncio
-async def test_collect_retries_transient_timeout(base_config: dict[str, Any]) -> None:
+async def test_collect_retries_transient_timeout(rest_adapter_config: dict[str, Any]) -> None:
     """Retry policy should recover from a transient timeout."""
 
     attempts = 0
@@ -232,16 +221,16 @@ async def test_collect_retries_transient_timeout(base_config: dict[str, Any]) ->
             raise httpx.TimeoutException("simulated timeout")
         return httpx.Response(200, json={"items": []}, request=request)
 
-    base_config["retry"] = {
+    rest_adapter_config["retry"] = {
         "enabled": True,
         "max_attempts": 3,
         "backoff_factor": 0.01,
         "max_backoff": 0.02,
         "jitter": 0.0,
     }
-    base_config["_transport"] = httpx.MockTransport(handler)
+    rest_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
 
     assert raw["status_code"] == 200
@@ -250,7 +239,7 @@ async def test_collect_retries_transient_timeout(base_config: dict[str, Any]) ->
 
 @pytest.mark.asyncio
 async def test_collect_returns_last_response_after_retry_exhaustion(
-    base_config: dict[str, Any]
+    rest_adapter_config: dict[str, Any]
 ) -> None:
     """When all retry attempts fail, the final HTTP response should be returned."""
 
@@ -261,16 +250,16 @@ async def test_collect_returns_last_response_after_retry_exhaustion(
         attempts += 1
         return httpx.Response(503, json={"error": "unavailable"}, request=request)
 
-    base_config["retry"] = {
+    rest_adapter_config["retry"] = {
         "enabled": True,
         "max_attempts": 2,
         "backoff_factor": 0.01,
         "max_backoff": 0.02,
         "jitter": 0.0,
     }
-    base_config["_transport"] = httpx.MockTransport(handler)
+    rest_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
 
     assert raw["status_code"] == 503
@@ -279,7 +268,7 @@ async def test_collect_returns_last_response_after_retry_exhaustion(
 
 @pytest.mark.asyncio
 async def test_collect_does_not_retry_non_idempotent_methods_by_default(
-    base_config: dict[str, Any]
+    rest_adapter_config: dict[str, Any]
 ) -> None:
     """Non-idempotent HTTP methods should not be retried unless explicitly configured."""
 
@@ -290,17 +279,17 @@ async def test_collect_does_not_retry_non_idempotent_methods_by_default(
         attempts += 1
         raise httpx.TimeoutException("simulated timeout")
 
-    base_config["method"] = "POST"
-    base_config["retry"] = {
+    rest_adapter_config["method"] = "POST"
+    rest_adapter_config["retry"] = {
         "enabled": True,
         "max_attempts": 3,
         "backoff_factor": 0.01,
         "max_backoff": 0.02,
         "jitter": 0.0,
     }
-    base_config["_transport"] = httpx.MockTransport(handler)
+    rest_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="timed out"):
         await adapter.collect()
@@ -309,44 +298,44 @@ async def test_collect_does_not_retry_non_idempotent_methods_by_default(
 
 
 @pytest.mark.asyncio
-async def test_collect_disallows_unlisted_host(base_config: dict[str, Any]) -> None:
+async def test_collect_disallows_unlisted_host(rest_adapter_config: dict[str, Any]) -> None:
     """Collection should reject endpoints outside the configured allowlist."""
 
-    base_config["allowed_hosts"] = ["api.example.com"]
-    base_config["endpoint"] = "https://unauthorized.example.com/data"
-    base_config["_transport"] = build_transport(200, {"ok": True})
+    rest_adapter_config["allowed_hosts"] = ["api.example.com"]
+    rest_adapter_config["endpoint"] = "https://unauthorized.example.com/data"
+    rest_adapter_config["_transport"] = build_transport(200, {"ok": True})
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="not permitted"):
         await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_collect_allows_regex_pattern(base_config: dict[str, Any]) -> None:
+async def test_collect_allows_regex_pattern(rest_adapter_config: dict[str, Any]) -> None:
     """Regex allowlists should permit matching URLs."""
 
-    base_config["allowed_url_patterns"] = [r"https://api\.example\.com/.*"]
-    base_config["_transport"] = build_transport(200, {"items": []})
+    rest_adapter_config["allowed_url_patterns"] = [r"https://api\.example\.com/.*"]
+    rest_adapter_config["_transport"] = build_transport(200, {"items": []})
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
 
     assert raw["status_code"] == 200
 
 
 @pytest.mark.asyncio
-async def test_collect_enforces_max_content_length(base_config: dict[str, Any]) -> None:
+async def test_collect_enforces_max_content_length(rest_adapter_config: dict[str, Any]) -> None:
     """Responses larger than max_content_length should raise CollectionError."""
 
-    base_config["max_content_length"] = 4
-    base_config["_transport"] = build_transport(
+    rest_adapter_config["max_content_length"] = 4
+    rest_adapter_config["_transport"] = build_transport(
         200,
         b"excess",
         headers={"content-type": "text/plain", "content-length": "4"},
     )
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="max_content_length"):
         await adapter.collect()
@@ -354,29 +343,31 @@ async def test_collect_enforces_max_content_length(base_config: dict[str, Any]) 
 
 @pytest.mark.asyncio
 async def test_collect_respects_declared_content_length_guardrail(
-    base_config: dict[str, Any]
+    rest_adapter_config: dict[str, Any]
 ) -> None:
     """Responses declaring a content-length above the limit must be rejected."""
 
-    base_config["max_content_length"] = 10
-    base_config["_transport"] = build_transport(
+    rest_adapter_config["max_content_length"] = 10
+    rest_adapter_config["_transport"] = build_transport(
         200,
         b"short",
         headers={"content-type": "text/plain", "content-length": "2048"},
     )
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="Content-Length"):
         await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_collect_blocks_redirects_when_disallowed(base_config: dict[str, Any]) -> None:
+async def test_collect_blocks_redirects_when_disallowed(
+    rest_adapter_config: dict[str, Any]
+) -> None:
     """Redirect responses should raise when redirects are disabled."""
 
-    base_config["allowed_hosts"] = ["api.example.com"]
-    base_config["endpoint"] = "https://api.example.com/redirect"
+    rest_adapter_config["allowed_hosts"] = ["api.example.com"]
+    rest_adapter_config["endpoint"] = "https://api.example.com/redirect"
 
     async def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -385,21 +376,23 @@ async def test_collect_blocks_redirects_when_disallowed(base_config: dict[str, A
             request=request,
         )
 
-    base_config["_transport"] = httpx.MockTransport(handler)
+    rest_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="Redirect responses"):
         await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_collect_revalidates_allowlist_after_redirect(base_config: dict[str, Any]) -> None:
+async def test_collect_revalidates_allowlist_after_redirect(
+    rest_adapter_config: dict[str, Any]
+) -> None:
     """Allowlist enforcement should apply after following redirects."""
 
-    base_config["allowed_hosts"] = ["api.example.com"]
-    base_config["endpoint"] = "https://api.example.com/redirect"
-    base_config["follow_redirects"] = True
+    rest_adapter_config["allowed_hosts"] = ["api.example.com"]
+    rest_adapter_config["endpoint"] = "https://api.example.com/redirect"
+    rest_adapter_config["follow_redirects"] = True
 
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.host == "api.example.com":
@@ -414,24 +407,24 @@ async def test_collect_revalidates_allowlist_after_redirect(base_config: dict[st
             request=request,
         )
 
-    base_config["_transport"] = httpx.MockTransport(handler)
+    rest_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="allowlist"):
         await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_collect_raises_on_timeout(base_config: dict[str, Any]) -> None:
+async def test_collect_raises_on_timeout(rest_adapter_config: dict[str, Any]) -> None:
     """HTTP timeouts should surface as CollectionError instances."""
 
     async def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.TimeoutException("simulated timeout")
 
-    base_config["_transport"] = httpx.MockTransport(handler)
+    rest_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="timed out"):
         await adapter.collect()
@@ -439,14 +432,14 @@ async def test_collect_raises_on_timeout(base_config: dict[str, Any]) -> None:
 
 @pytest.mark.asyncio
 async def test_collect_blocks_private_network_host_by_default(
-    base_config: dict[str, Any]
+    rest_adapter_config: dict[str, Any]
 ) -> None:
     """Private or loopback network hosts should be rejected unless explicitly allowed."""
 
-    base_config["endpoint"] = "http://127.0.0.1/internal"
-    base_config["_transport"] = build_transport(200, {"ok": True})
+    rest_adapter_config["endpoint"] = "http://127.0.0.1/internal"
+    rest_adapter_config["_transport"] = build_transport(200, {"ok": True})
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="Private network hosts"):
         await adapter.collect()
@@ -454,16 +447,16 @@ async def test_collect_blocks_private_network_host_by_default(
 
 @pytest.mark.asyncio
 async def test_collect_allows_private_network_when_opted_in(
-    base_config: dict[str, Any]
+    rest_adapter_config: dict[str, Any]
 ) -> None:
     """Explicit opt-in should allow private hosts when combined with an allowlist."""
 
-    base_config["endpoint"] = "http://127.0.0.1/internal"
-    base_config["allow_private_networks"] = True
-    base_config["allowed_hosts"] = ["127.0.0.1"]
-    base_config["_transport"] = build_transport(200, {"result": "ok"})
+    rest_adapter_config["endpoint"] = "http://127.0.0.1/internal"
+    rest_adapter_config["allow_private_networks"] = True
+    rest_adapter_config["allowed_hosts"] = ["127.0.0.1"]
+    rest_adapter_config["_transport"] = build_transport(200, {"result": "ok"})
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
     raw = await adapter.collect()
 
     assert raw["status_code"] == 200
@@ -471,25 +464,27 @@ async def test_collect_allows_private_network_when_opted_in(
 
 
 @pytest.mark.asyncio
-async def test_collect_requires_allowlist_for_redirects(base_config: dict[str, Any]) -> None:
+async def test_collect_requires_allowlist_for_redirects(
+    rest_adapter_config: dict[str, Any]
+) -> None:
     """Enabling redirects without an allowlist should be blocked for safety."""
 
-    base_config["follow_redirects"] = True
-    base_config["_transport"] = build_transport(200, {"items": []})
+    rest_adapter_config["follow_redirects"] = True
+    rest_adapter_config["_transport"] = build_transport(200, {"items": []})
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="follow_redirects"):
         await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_collect_rejects_invalid_timeout(base_config: dict[str, Any]) -> None:
+async def test_collect_rejects_invalid_timeout(rest_adapter_config: dict[str, Any]) -> None:
     """Non-positive timeouts should raise a CollectionError."""
 
-    base_config["timeout"] = 0
+    rest_adapter_config["timeout"] = 0
 
-    adapter = RESTAdapter(base_config)
+    adapter = RESTAdapter(rest_adapter_config)
 
     with pytest.raises(CollectionError, match="timeout must be greater than zero"):
         await adapter.collect()

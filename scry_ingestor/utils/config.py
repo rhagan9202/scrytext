@@ -481,3 +481,12 @@ def get_settings(*, reload: bool = False) -> GlobalSettings:
     if reload:
         _get_settings_cached.cache_clear()
     return _get_settings_cached()
+
+
+def clear_settings_cache() -> None:
+    """Clear cached global settings instances."""
+
+    _get_settings_cached.cache_clear()
+
+
+setattr(get_settings, "cache_clear", clear_settings_cache)

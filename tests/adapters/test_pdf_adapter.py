@@ -19,60 +19,6 @@ async def manage_pdf_resources(adapter: PDFAdapter):
         await adapter.cleanup(raw_data)
 
 
-@pytest.fixture
-def sample_pdf_config():
-    """Configuration for sample PDF document."""
-    return {
-        "source_id": "test-pdf-source",
-        "source_type": "file",
-        "path": "tests/fixtures/sample.pdf",
-        "use_cloud_processing": False,
-    }
-
-
-@pytest.fixture
-def pdf_config_with_tables():
-    """Configuration with table extraction enabled."""
-    return {
-        "source_id": "test-pdf-tables",
-        "source_type": "file",
-        "path": "tests/fixtures/sample.pdf",
-        "transformation": {
-            "extract_tables": True,
-            "extract_metadata": True,
-        },
-    }
-
-
-@pytest.fixture
-def pdf_config_with_validation():
-    """Configuration with strict validation rules."""
-    return {
-        "source_id": "test-pdf-strict",
-        "source_type": "file",
-        "path": "tests/fixtures/sample.pdf",
-        "validation": {
-            "min_pages": 2,
-            "min_words": 10,
-            "allow_empty": False,
-        },
-    }
-
-
-@pytest.fixture
-def pdf_config_layout_mode():
-    """Configuration with layout-preserving text extraction."""
-    return {
-        "source_id": "test-pdf-layout",
-        "source_type": "file",
-        "path": "tests/fixtures/sample.pdf",
-        "transformation": {
-            "layout_mode": True,
-            "extract_metadata": True,
-        },
-    }
-
-
 class TestPDFAdapter:
     """Test suite for PDFAdapter with live fixtures."""
 

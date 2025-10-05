@@ -32,27 +32,8 @@ def build_transport(
     return httpx.MockTransport(handler)
 
 
-@pytest.fixture
-def base_config() -> dict[str, Any]:
-    """Base configuration shared across BeautifulSoup adapter tests."""
-
-    return {
-        "source_id": "soup-test",
-        "url": "https://example.com/articles",
-        "validation": {"expected_statuses": [200]},
-        "transformation": {
-            "include_links": True,
-            "include_metadata": True,
-            "selectors": {
-                "headlines": "article h1",
-                "summaries": "article p.summary",
-            },
-        },
-    }
-
-
 @pytest.mark.asyncio
-async def test_collect_success(base_config: dict[str, Any]) -> None:
+async def test_collect_success(soup_adapter_config: dict[str, Any]) -> None:
     """Collect should perform an HTTP request and capture response details."""
 
     html = """
@@ -60,9 +41,9 @@ async def test_collect_success(base_config: dict[str, Any]) -> None:
     <body><article><h1>Headline</h1><p class='summary'>Summary</p></article></body>
     </html>
     """
-    base_config["_transport"] = build_transport(html)
+    soup_adapter_config["_transport"] = build_transport(html)
 
-    adapter = BeautifulSoupAdapter(base_config)
+    adapter = BeautifulSoupAdapter(soup_adapter_config)
     raw = await adapter.collect()
 
     assert raw["status_code"] == 200
@@ -72,25 +53,25 @@ async def test_collect_success(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_collect_rejects_method(base_config: dict[str, Any]) -> None:
+async def test_collect_rejects_method(soup_adapter_config: dict[str, Any]) -> None:
     """Unsupported HTTP methods should raise a CollectionError."""
 
-    base_config["method"] = "POST"
-    adapter = BeautifulSoupAdapter(base_config)
+    soup_adapter_config["method"] = "POST"
+    adapter = BeautifulSoupAdapter(soup_adapter_config)
 
     with pytest.raises(CollectionError):
         await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_validate_required_selectors(base_config: dict[str, Any]) -> None:
+async def test_validate_required_selectors(soup_adapter_config: dict[str, Any]) -> None:
     """Validation fails when required selectors are missing."""
 
     html = "<html><body><p>No articles here</p></body></html>"
-    base_config["_transport"] = build_transport(html)
-    base_config["validation"] = {"required_selectors": ["article h1"]}
+    soup_adapter_config["_transport"] = build_transport(html)
+    soup_adapter_config["validation"] = {"required_selectors": ["article h1"]}
 
-    adapter = BeautifulSoupAdapter(base_config)
+    adapter = BeautifulSoupAdapter(soup_adapter_config)
     raw = await adapter.collect()
     validation = await adapter.validate(raw)
 
@@ -99,7 +80,7 @@ async def test_validate_required_selectors(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_transform_extracts_selectors(base_config: dict[str, Any]) -> None:
+async def test_transform_extracts_selectors(soup_adapter_config: dict[str, Any]) -> None:
     """Transform should parse HTML and return structured fields."""
 
     html = """
@@ -122,9 +103,9 @@ async def test_transform_extracts_selectors(base_config: dict[str, Any]) -> None
       </body>
     </html>
     """
-    base_config["_transport"] = build_transport(html)
+    soup_adapter_config["_transport"] = build_transport(html)
 
-    adapter = BeautifulSoupAdapter(base_config)
+    adapter = BeautifulSoupAdapter(soup_adapter_config)
     raw = await adapter.collect()
     validation = await adapter.validate(raw)
     transformed = await adapter.transform(raw)
@@ -139,20 +120,20 @@ async def test_transform_extracts_selectors(base_config: dict[str, Any]) -> None
 
 @pytest.mark.asyncio
 async def test_invalid_selector_type_raises_configuration_error(
-    base_config: dict[str, Any]
+    soup_adapter_config: dict[str, Any]
 ) -> None:
     """Non-string selectors should be rejected during configuration."""
 
     html = "<html><body><article><h1>Headline</h1></article></body></html>"
-    base_config["_transport"] = build_transport(html)
-    base_config["transformation"]["selectors"] = {"headlines": ["article h1"]}
+    soup_adapter_config["_transport"] = build_transport(html)
+    soup_adapter_config["transformation"]["selectors"] = {"headlines": ["article h1"]}
 
     with pytest.raises(ConfigurationError):
-        BeautifulSoupAdapter(base_config)
+        BeautifulSoupAdapter(soup_adapter_config)
 
 
 @pytest.mark.asyncio
-async def test_process_full_pipeline(base_config: dict[str, Any]) -> None:
+async def test_process_full_pipeline(soup_adapter_config: dict[str, Any]) -> None:
     """End-to-end process should return payload with extracted fields."""
 
     html = """
@@ -166,9 +147,9 @@ async def test_process_full_pipeline(base_config: dict[str, Any]) -> None:
       </body>
     </html>
     """
-    base_config["_transport"] = build_transport(html)
+    soup_adapter_config["_transport"] = build_transport(html)
 
-    adapter = BeautifulSoupAdapter(base_config)
+    adapter = BeautifulSoupAdapter(soup_adapter_config)
     payload = await adapter.process()
 
     assert payload.metadata.adapter_type == "BeautifulSoupAdapter"
@@ -177,7 +158,7 @@ async def test_process_full_pipeline(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
-async def test_collect_retries_transient_timeout(base_config: dict[str, Any]) -> None:
+async def test_collect_retries_transient_timeout(soup_adapter_config: dict[str, Any]) -> None:
   """Retry policy should recover from transient timeouts."""
 
   attempts = 0
@@ -189,16 +170,16 @@ async def test_collect_retries_transient_timeout(base_config: dict[str, Any]) ->
       raise httpx.TimeoutException("simulated timeout")
     return httpx.Response(200, text="<html><body>ok</body></html>", request=request)
 
-  base_config["retry"] = {
+  soup_adapter_config["retry"] = {
     "enabled": True,
     "max_attempts": 3,
     "backoff_factor": 0.01,
     "max_backoff": 0.02,
     "jitter": 0.0,
   }
-  base_config["_transport"] = httpx.MockTransport(handler)
+  soup_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
   raw = await adapter.collect()
 
   assert raw["status_code"] == 200
@@ -207,7 +188,7 @@ async def test_collect_retries_transient_timeout(base_config: dict[str, Any]) ->
 
 @pytest.mark.asyncio
 async def test_collect_returns_last_response_after_retry_exhaustion(
-  base_config: dict[str, Any]
+  soup_adapter_config: dict[str, Any]
 ) -> None:
   """When all retries fail, the final HTTP response should be returned."""
 
@@ -218,16 +199,16 @@ async def test_collect_returns_last_response_after_retry_exhaustion(
     attempts += 1
     return httpx.Response(503, text="<html>Error</html>", request=request)
 
-  base_config["retry"] = {
+  soup_adapter_config["retry"] = {
     "enabled": True,
     "max_attempts": 2,
     "backoff_factor": 0.01,
     "max_backoff": 0.02,
     "jitter": 0.0,
   }
-  base_config["_transport"] = httpx.MockTransport(handler)
+  soup_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
   raw = await adapter.collect()
 
   assert raw["status_code"] == 503
@@ -235,44 +216,44 @@ async def test_collect_returns_last_response_after_retry_exhaustion(
 
 
 @pytest.mark.asyncio
-async def test_collect_disallows_unlisted_host(base_config: dict[str, Any]) -> None:
+async def test_collect_disallows_unlisted_host(soup_adapter_config: dict[str, Any]) -> None:
   """Collection should reject URLs outside the configured allowlist."""
 
-  base_config["allowed_hosts"] = ["example.com"]
-  base_config["url"] = "https://unauthorized.example.net/page"
-  base_config["_transport"] = build_transport("<html></html>")
+  soup_adapter_config["allowed_hosts"] = ["example.com"]
+  soup_adapter_config["url"] = "https://unauthorized.example.net/page"
+  soup_adapter_config["_transport"] = build_transport("<html></html>")
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
 
   with pytest.raises(CollectionError, match="not permitted"):
     await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_collect_allows_regex_pattern(base_config: dict[str, Any]) -> None:
+async def test_collect_allows_regex_pattern(soup_adapter_config: dict[str, Any]) -> None:
   """Regex allowlists should permit matching URLs."""
 
-  base_config["allowed_url_patterns"] = [r"https://example\.com/.*"]
-  base_config["_transport"] = build_transport("<html></html>")
+  soup_adapter_config["allowed_url_patterns"] = [r"https://example\.com/.*"]
+  soup_adapter_config["_transport"] = build_transport("<html></html>")
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
   raw = await adapter.collect()
 
   assert raw["status_code"] == 200
 
 
 @pytest.mark.asyncio
-async def test_collect_enforces_max_content_length(base_config: dict[str, Any]) -> None:
+async def test_collect_enforces_max_content_length(soup_adapter_config: dict[str, Any]) -> None:
   """Responses exceeding max_content_length should raise CollectionError."""
 
-  base_config["max_content_length"] = 16
+  soup_adapter_config["max_content_length"] = 16
   big_html = "<html><body>" + ("x" * 100) + "</body></html>"
-  base_config["_transport"] = build_transport(
+  soup_adapter_config["_transport"] = build_transport(
     big_html,
     headers={"content-length": "16"},
   )
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
 
   with pytest.raises(CollectionError, match="max_content_length"):
     await adapter.collect()
@@ -280,29 +261,29 @@ async def test_collect_enforces_max_content_length(base_config: dict[str, Any]) 
 
 @pytest.mark.asyncio
 async def test_collect_respects_declared_content_length_guardrail(
-  base_config: dict[str, Any]
+  soup_adapter_config: dict[str, Any]
 ) -> None:
   """Responses declaring excessive content-length should be rejected."""
 
-  base_config["max_content_length"] = 1024
+  soup_adapter_config["max_content_length"] = 1024
   html = "<html><body>ok</body></html>"
-  base_config["_transport"] = build_transport(
+  soup_adapter_config["_transport"] = build_transport(
     html,
     headers={"content-length": "65536"},
   )
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
 
   with pytest.raises(CollectionError, match="Content-Length"):
     await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_collect_blocks_redirects_when_disallowed(base_config: dict[str, Any]) -> None:
+async def test_collect_blocks_redirects_when_disallowed(soup_adapter_config: dict[str, Any]) -> None:
   """Redirect responses should raise when redirects are disabled."""
 
-  base_config["allowed_hosts"] = ["example.com"]
-  base_config["url"] = "https://example.com/redirect"
+  soup_adapter_config["allowed_hosts"] = ["example.com"]
+  soup_adapter_config["url"] = "https://example.com/redirect"
 
   async def handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(
@@ -311,21 +292,21 @@ async def test_collect_blocks_redirects_when_disallowed(base_config: dict[str, A
       request=request,
     )
 
-  base_config["_transport"] = httpx.MockTransport(handler)
+  soup_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
 
   with pytest.raises(CollectionError, match="Redirect responses"):
     await adapter.collect()
 
 
 @pytest.mark.asyncio
-async def test_collect_revalidates_allowlist_after_redirect(base_config: dict[str, Any]) -> None:
+async def test_collect_revalidates_allowlist_after_redirect(soup_adapter_config: dict[str, Any]) -> None:
   """Allowlist enforcement should run after following redirects."""
 
-  base_config["allowed_hosts"] = ["example.com"]
-  base_config["url"] = "https://example.com/redirect"
-  base_config["follow_redirects"] = True
+  soup_adapter_config["allowed_hosts"] = ["example.com"]
+  soup_adapter_config["url"] = "https://example.com/redirect"
+  soup_adapter_config["follow_redirects"] = True
 
   async def handler(request: httpx.Request) -> httpx.Response:
     if request.url.host == "example.com":
@@ -340,9 +321,9 @@ async def test_collect_revalidates_allowlist_after_redirect(base_config: dict[st
       request=request,
     )
 
-  base_config["_transport"] = httpx.MockTransport(handler)
+  soup_adapter_config["_transport"] = httpx.MockTransport(handler)
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
 
   with pytest.raises(CollectionError, match="allowlist"):
     await adapter.collect()
@@ -350,14 +331,14 @@ async def test_collect_revalidates_allowlist_after_redirect(base_config: dict[st
 
 @pytest.mark.asyncio
 async def test_collect_blocks_private_network_host_by_default(
-  base_config: dict[str, Any]
+  soup_adapter_config: dict[str, Any]
 ) -> None:
   """Private hosts should raise unless explicitly allowed."""
 
-  base_config["url"] = "http://127.0.0.1/page"
-  base_config["_transport"] = build_transport("<html></html>")
+  soup_adapter_config["url"] = "http://127.0.0.1/page"
+  soup_adapter_config["_transport"] = build_transport("<html></html>")
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
 
   with pytest.raises(CollectionError, match="Private network hosts"):
     await adapter.collect()
@@ -365,16 +346,16 @@ async def test_collect_blocks_private_network_host_by_default(
 
 @pytest.mark.asyncio
 async def test_collect_allows_private_host_when_opted_in(
-  base_config: dict[str, Any]
+  soup_adapter_config: dict[str, Any]
 ) -> None:
   """Opting in to private networks should permit localhost fetching."""
 
-  base_config["url"] = "http://127.0.0.1/page"
-  base_config["allow_private_networks"] = True
-  base_config["allowed_hosts"] = ["127.0.0.1"]
-  base_config["_transport"] = build_transport("<html><body>ok</body></html>")
+  soup_adapter_config["url"] = "http://127.0.0.1/page"
+  soup_adapter_config["allow_private_networks"] = True
+  soup_adapter_config["allowed_hosts"] = ["127.0.0.1"]
+  soup_adapter_config["_transport"] = build_transport("<html><body>ok</body></html>")
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
   raw = await adapter.collect()
 
   assert raw["status_code"] == 200
@@ -383,14 +364,14 @@ async def test_collect_allows_private_host_when_opted_in(
 
 @pytest.mark.asyncio
 async def test_collect_requires_allowlist_for_redirects(
-  base_config: dict[str, Any]
+  soup_adapter_config: dict[str, Any]
 ) -> None:
   """Enabling redirects without an allowlist should raise."""
 
-  base_config["follow_redirects"] = True
-  base_config["_transport"] = build_transport("<html></html>")
+  soup_adapter_config["follow_redirects"] = True
+  soup_adapter_config["_transport"] = build_transport("<html></html>")
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
 
   with pytest.raises(CollectionError, match="follow_redirects"):
     await adapter.collect()
@@ -398,13 +379,13 @@ async def test_collect_requires_allowlist_for_redirects(
 
 @pytest.mark.asyncio
 async def test_collect_rejects_invalid_timeout(
-  base_config: dict[str, Any]
+  soup_adapter_config: dict[str, Any]
 ) -> None:
   """Zero or negative timeouts should be rejected."""
 
-  base_config["timeout"] = -1
+  soup_adapter_config["timeout"] = -1
 
-  adapter = BeautifulSoupAdapter(base_config)
+  adapter = BeautifulSoupAdapter(soup_adapter_config)
 
   with pytest.raises(CollectionError, match="timeout must be greater than zero"):
     await adapter.collect()

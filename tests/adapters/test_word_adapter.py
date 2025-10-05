@@ -6,46 +6,6 @@ from scry_ingestor.adapters.word_adapter import WordAdapter
 from scry_ingestor.exceptions import CollectionError, ConfigurationError
 
 
-@pytest.fixture
-def sample_word_config(tmp_path):
-    """Configuration for sample Word document."""
-    return {
-        "source_id": "test-word-source",
-        "source_type": "file",
-        "path": "tests/fixtures/sample.docx",
-        "use_cloud_processing": False,
-    }
-
-
-@pytest.fixture
-def word_config_with_validation(tmp_path):
-    """Configuration with strict validation rules."""
-    return {
-        "source_id": "test-word-strict",
-        "source_type": "file",
-        "path": "tests/fixtures/sample.docx",
-        "validation": {
-            "min_paragraphs": 3,
-            "min_words": 10,
-            "allow_empty": False,
-        },
-    }
-
-
-@pytest.fixture
-def word_config_with_tables(tmp_path):
-    """Configuration with table extraction enabled."""
-    return {
-        "source_id": "test-word-tables",
-        "source_type": "file",
-        "path": "tests/fixtures/sample.docx",
-        "transformation": {
-            "extract_tables": True,
-            "extract_metadata": True,
-        },
-    }
-
-
 class TestWordAdapter:
     """Test suite for WordAdapter with live fixtures."""
 

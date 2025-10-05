@@ -1,0 +1,228 @@
+# Prometheus Alerting Rules for Scry_Ingestor
+# 
+# These rules define critical and warning-level alerts for monitoring
+# the health, performance, and SLA compliance of the Scry_Ingestor service.
+#
+# To use these rules:
+# 1. Copy this file to your Prometheus configuration directory
+# 2. Add to prometheus.yml:
+#    rule_files:
+#      - "scry_ingestor_alerts.yml"
+# 3. Reload Prometheus configuration
+
+groups:
+  - name: scry_ingestor_critical
+    interval: 30s
+    rules:
+      - alert: IngestionHighErrorRate
+        expr: |
+          (
+            sum(rate(ingestion_attempts_total{status="error"}[5m]))
+            /
+            sum(rate(ingestion_attempts_total[5m]))
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: critical
+          service: scry-ingestor
+        annotations:
+          summary: "High ingestion error rate detected"
+          description: |
+            Error rate for ingestion operations has exceeded 10% for the last 5 minutes.
+            Current rate: {{ $value | humanizePercentage }}
+            This indicates systematic failures that require immediate attention.
+
+      - alert: IngestionCompleteFailure
+        expr: |
+          sum(rate(ingestion_attempts_total{status="success"}[5m])) == 0
+          and
+          sum(rate(ingestion_attempts_total[5m])) > 0
+        for: 10m
+        labels:
+          severity: critical
+          service: scry-ingestor
+        annotations:
+          summary: "No successful ingestions in last 10 minutes"
+          description: |
+            All ingestion attempts are failing. This indicates a complete service outage.
+            Immediate investigation required.
+
+      - alert: IngestionSLAViolationCritical
+        expr: |
+          sum(increase(ingestion_sla_violations_total{severity="critical"}[15m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+          service: scry-ingestor
+        annotations:
+          summary: "Critical SLA violations detected"
+          description: |
+            More than 10 critical SLA violations in the last 15 minutes.
+            Current count: {{ $value }}
+            Processing times are exceeding acceptable thresholds.
+
+      - alert: IngestionProcessingP99High
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum(rate(processing_duration_seconds_bucket[5m])) by (le)
+          ) > 30
+        for: 10m
+        labels:
+          severity: critical
+          service: scry-ingestor
+        annotations:
+          summary: "P99 processing duration critically high"
+          description: |
+            99th percentile processing duration has exceeded 30 seconds for 10 minutes.
+            Current P99: {{ $value | humanizeDuration }}
+            This indicates severe performance degradation.
+
+      - alert: IngestionActiveRequestsSaturated
+        expr: |
+          sum(ingestion_active_requests) > 50
+        for: 5m
+        labels:
+          severity: critical
+          service: scry-ingestor
+        annotations:
+          summary: "Active requests saturated"
+          description: |
+            More than 50 concurrent ingestion requests for 5 minutes.
+            Current active: {{ $value }}
+            Service may be overwhelmed or experiencing resource exhaustion.
+
+  - name: scry_ingestor_warning
+    interval: 60s
+    rules:
+      - alert: IngestionElevatedErrorRate
+        expr: |
+          (
+            sum(rate(ingestion_attempts_total{status="error"}[10m]))
+            /
+            sum(rate(ingestion_attempts_total[10m]))
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: scry-ingestor
+        annotations:
+          summary: "Elevated ingestion error rate"
+          description: |
+            Error rate has exceeded 5% for the last 10 minutes.
+            Current rate: {{ $value | humanizePercentage }}
+            Monitor for potential service degradation.
+
+      - alert: IngestionSLAViolationWarning
+        expr: |
+          sum(increase(ingestion_sla_violations_total{severity="warning"}[30m])) > 20
+        for: 10m
+        labels:
+          severity: warning
+          service: scry-ingestor
+        annotations:
+          summary: "Multiple SLA warning violations"
+          description: |
+            More than 20 warning-level SLA violations in the last 30 minutes.
+            Current count: {{ $value }}
+            Processing times are approaching thresholds.
+
+      - alert: IngestionProcessingP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(processing_duration_seconds_bucket[10m])) by (le)
+          ) > 10
+        for: 15m
+        labels:
+          severity: warning
+          service: scry-ingestor
+        annotations:
+          summary: "P95 processing duration elevated"
+          description: |
+            95th percentile processing duration has exceeded 10 seconds for 15 minutes.
+            Current P95: {{ $value | humanizeDuration }}
+            Performance may be degrading.
+
+      - alert: IngestionAdapterSpecificErrors
+        expr: |
+          sum by(adapter) (rate(ingestion_attempts_total{status="error"}[15m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          service: scry-ingestor
+        annotations:
+          summary: "High error rate for specific adapter"
+          description: |
+            Adapter {{ $labels.adapter }} is experiencing elevated errors.
+            Error rate: {{ $value | humanize }} errors/sec
+            Adapter-specific issue may require investigation.
+
+      - alert: IngestionValidationErrorsElevated
+        expr: |
+          sum(rate(validation_errors_total[10m])) > 1.0
+        for: 15m
+        labels:
+          severity: warning
+          service: scry-ingestor
+        annotations:
+          summary: "High validation error rate"
+          description: |
+            Validation errors are occurring at an elevated rate.
+            Current rate: {{ $value | humanize }} errors/sec
+            Data quality issues may be present in source systems.
+
+      - alert: IngestionLargePayloads
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by(adapter, le) (rate(ingestion_payload_size_bytes_bucket[10m]))
+          ) > 50000000
+        for: 15m
+        labels:
+          severity: warning
+          service: scry-ingestor
+        annotations:
+          summary: "Large payload sizes detected"
+          description: |
+            Adapter {{ $labels.adapter }} is processing unusually large payloads.
+            P95 size: {{ $value | humanize1024 }}B
+            May impact memory usage and processing times.
+
+  - name: scry_ingestor_info
+    interval: 120s
+    rules:
+      - alert: IngestionTraceSpanDurationAnomalous
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by(operation, le) (rate(trace_span_duration_seconds_bucket[15m]))
+          ) > (
+            histogram_quantile(
+              0.99,
+              sum by(operation, le) (rate(trace_span_duration_seconds_bucket[1h] offset 1h))
+            ) * 2
+          )
+        for: 20m
+        labels:
+          severity: info
+          service: scry-ingestor
+        annotations:
+          summary: "Trace span duration anomaly"
+          description: |
+            Operation {{ $labels.operation }} is taking 2x longer than historical baseline.
+            Current P99: {{ $value | humanizeDuration }}
+            Investigate for potential performance regressions.
+
+      - alert: IngestionNoActivity
+        expr: |
+          sum(rate(ingestion_attempts_total[30m])) == 0
+        for: 30m
+        labels:
+          severity: info
+          service: scry-ingestor
+        annotations:
+          summary: "No ingestion activity detected"
+          description: |
+            No ingestion attempts recorded in the last 30 minutes.
+            This may be expected during off-hours or indicates upstream issues.
