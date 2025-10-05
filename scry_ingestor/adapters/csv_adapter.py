@@ -61,11 +61,57 @@ class CSVAdapter(BaseAdapter):
             raise CollectionError(f"Failed to collect CSV data: {exc}") from exc
 
     async def validate(self, raw_data: pd.DataFrame) -> ValidationResult:
-        errors = []
-        warnings = []
-        metrics = {"row_count": len(raw_data), "column_count": len(raw_data.columns)}
+        """Validate CSV content against configured schema expectations."""
+
+        validation_config = self.config.get("validation") or {}
+
+        errors: list[str] = []
+        warnings: list[str] = []
+        metrics: dict[str, Any] = {
+            "row_count": len(raw_data),
+            "column_count": len(raw_data.columns),
+        }
+
         if raw_data.empty:
             errors.append("CSV file is empty")
+
+        min_rows = validation_config.get("min_rows")
+        if isinstance(min_rows, int) and metrics["row_count"] < min_rows:
+            errors.append(
+                f"CSV has {metrics['row_count']} rows, minimum required is {min_rows}"
+            )
+
+        max_rows = validation_config.get("max_rows")
+        if isinstance(max_rows, int) and metrics["row_count"] > max_rows:
+            errors.append(
+                f"CSV has {metrics['row_count']} rows, maximum allowed is {max_rows}"
+            )
+
+        required_columns = validation_config.get("required_columns") or []
+        missing_columns = [col for col in required_columns if col not in raw_data.columns]
+        if missing_columns:
+            metrics["missing_columns"] = missing_columns
+            errors.append(
+                "CSV is missing required columns: " + ", ".join(sorted(missing_columns))
+            )
+        else:
+            metrics["missing_columns"] = []
+
+        allow_empty_values = validation_config.get("allow_empty_values", True)
+        if not allow_empty_values:
+            has_empty_values = bool(raw_data.isna().any().any())
+            if not has_empty_values:
+                # Consider object dtypes containing blank strings as empty values.
+                object_columns = raw_data.select_dtypes(include=["object", "string"])
+                if not object_columns.empty:
+                    normalized = object_columns.replace(r"^\s*$", pd.NA, regex=True)
+                    has_empty_values = bool(normalized.isna().to_numpy().any())
+            metrics["has_empty_values"] = has_empty_values
+            if has_empty_values:
+                errors.append("CSV contains empty values but allow_empty_values is False")
+        else:
+            metrics["has_empty_values"] = bool(raw_data.isna().any().any())
+
         return ValidationResult(
             is_valid=len(errors) == 0,
             errors=errors,

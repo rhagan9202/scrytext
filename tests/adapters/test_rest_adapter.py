@@ -162,6 +162,95 @@ def test_invalid_response_format_raises_configuration_error(
 
 
 @pytest.mark.asyncio
+async def test_collect_retries_transient_timeout(base_config: dict[str, Any]) -> None:
+    """Retry policy should recover from a transient timeout."""
+
+    attempts = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 2:
+            raise httpx.TimeoutException("simulated timeout")
+        return httpx.Response(200, json={"items": []}, request=request)
+
+    base_config["retry"] = {
+        "enabled": True,
+        "max_attempts": 3,
+        "backoff_factor": 0.01,
+        "max_backoff": 0.02,
+        "jitter": 0.0,
+    }
+    base_config["_transport"] = httpx.MockTransport(handler)
+
+    adapter = RESTAdapter(base_config)
+    raw = await adapter.collect()
+
+    assert raw["status_code"] == 200
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_collect_returns_last_response_after_retry_exhaustion(
+    base_config: dict[str, Any]
+) -> None:
+    """When all retry attempts fail, the final HTTP response should be returned."""
+
+    attempts = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        return httpx.Response(503, json={"error": "unavailable"}, request=request)
+
+    base_config["retry"] = {
+        "enabled": True,
+        "max_attempts": 2,
+        "backoff_factor": 0.01,
+        "max_backoff": 0.02,
+        "jitter": 0.0,
+    }
+    base_config["_transport"] = httpx.MockTransport(handler)
+
+    adapter = RESTAdapter(base_config)
+    raw = await adapter.collect()
+
+    assert raw["status_code"] == 503
+    assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_collect_does_not_retry_non_idempotent_methods_by_default(
+    base_config: dict[str, Any]
+) -> None:
+    """Non-idempotent HTTP methods should not be retried unless explicitly configured."""
+
+    attempts = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        raise httpx.TimeoutException("simulated timeout")
+
+    base_config["method"] = "POST"
+    base_config["retry"] = {
+        "enabled": True,
+        "max_attempts": 3,
+        "backoff_factor": 0.01,
+        "max_backoff": 0.02,
+        "jitter": 0.0,
+    }
+    base_config["_transport"] = httpx.MockTransport(handler)
+
+    adapter = RESTAdapter(base_config)
+
+    with pytest.raises(CollectionError, match="timed out"):
+        await adapter.collect()
+
+    assert attempts == 1
+
+
+@pytest.mark.asyncio
 async def test_collect_disallows_unlisted_host(base_config: dict[str, Any]) -> None:
     """Collection should reject endpoints outside the configured allowlist."""
 

@@ -139,6 +139,25 @@ class TestWordAdapter:
         assert any("paragraphs" in error for error in validation.errors)
 
     @pytest.mark.asyncio
+    async def test_validate_missing_required_tables(self, sample_word_config):
+        """Validation should fail when required table counts are unmet."""
+
+        config = {
+            **sample_word_config,
+            "validation": {
+                "require_tables": True,
+                "min_tables": 5,
+            },
+        }
+
+        adapter = WordAdapter(config)
+        raw_data = await adapter.collect()
+        validation = await adapter.validate(raw_data)
+
+        assert validation.is_valid is False
+        assert any("tables" in error for error in validation.errors)
+
+    @pytest.mark.asyncio
     async def test_transform_basic(self, sample_word_config):
         """Test basic transformation of Word document."""
         adapter = WordAdapter(sample_word_config)

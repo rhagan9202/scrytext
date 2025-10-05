@@ -191,6 +191,21 @@ class TestPDFAdapter:
             assert any("pages" in error for error in validation.errors)
 
     @pytest.mark.asyncio
+    async def test_validate_missing_required_tables(self, sample_pdf_config):
+        """Validation should fail when table requirements are unmet."""
+
+        sample_pdf_config["validation"] = {
+            "require_tables": True,
+            "min_tables": 3,
+        }
+        adapter = PDFAdapter(sample_pdf_config)
+        async with manage_pdf_resources(adapter) as raw_data:
+            validation = await adapter.validate(raw_data)
+
+            assert validation.is_valid is False
+            assert any("tables" in error for error in validation.errors)
+
+    @pytest.mark.asyncio
     async def test_transform_basic(self, sample_pdf_config):
         """Test basic transformation of PDF document."""
         adapter = PDFAdapter(sample_pdf_config)

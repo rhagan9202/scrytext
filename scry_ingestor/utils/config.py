@@ -10,8 +10,8 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    ValidationError as PydanticValidationError,
     field_validator,
+    ValidationError as PydanticValidationError,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -125,6 +125,12 @@ class GlobalSettings(BaseSettings):
     api_keys: list[str] = Field(default_factory=list)
     kafka_bootstrap_servers: str | None = None
     kafka_topic: str = "scry.ingestion.complete"
+    celery_failure_threshold: int = Field(default=5, ge=1)
+    celery_failure_window_seconds: int = Field(default=300, ge=1)
+    celery_circuit_reset_seconds: int = Field(default=600, ge=1)
+    celery_retry_backoff_seconds: float = Field(default=30.0, gt=0)
+    celery_retry_max_backoff_seconds: float = Field(default=300.0, gt=0)
+    celery_max_retries: int = Field(default=3, ge=0)
 
     @field_validator("log_level")
     @classmethod
@@ -157,6 +163,7 @@ class GlobalSettings(BaseSettings):
         if isinstance(value, str):
             return Path(value).expanduser()
         return value
+
 
 
 def ensure_runtime_configuration(settings: GlobalSettings) -> None:

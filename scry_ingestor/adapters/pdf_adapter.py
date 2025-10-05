@@ -201,6 +201,7 @@ class PDFAdapter(BaseAdapter):
             min_words = validation_config.get("min_words", 0)
             allow_empty = validation_config.get("allow_empty", False)
             require_tables = validation_config.get("require_tables", False)
+            min_tables = validation_config.get("min_tables")
 
             # Check for empty document
             if total_chars == 0 and not allow_empty:
@@ -215,6 +216,11 @@ class PDFAdapter(BaseAdapter):
             # Check table requirement
             if require_tables and table_count == 0:
                 errors.append("Document contains no tables, but tables are required")
+
+            if isinstance(min_tables, int) and table_count < min_tables:
+                errors.append(
+                    f"Document has {table_count} tables, minimum required: {min_tables}"
+                )
 
             # Warnings for potentially problematic documents
             if total_chars == 0 and has_images:

@@ -17,6 +17,16 @@ allowed_hosts: []  # Optional host allowlist, supports wildcards like "*.example
 allowed_url_patterns: []  # Optional regex patterns evaluated against the full URL
 allow_private_networks: false  # Explicit opt-in for private/loopback network targets
 
+# Retry policy (disabled by default; enable for idempotent requests)
+retry:
+  enabled: false
+  max_attempts: 3
+  backoff_factor: 0.5
+  max_backoff: 5.0
+  jitter: 0.1
+  status_forcelist: [429, 500, 502, 503, 504]
+  retry_on_methods: ["GET", "HEAD"]
+
 # Validation options
 validation:
   expected_statuses: [200]

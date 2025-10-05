@@ -128,9 +128,12 @@ class WordAdapter(BaseAdapter):
             metrics["word_count"] = len(text_content.split())
 
             # Validation rules from config
-            min_paragraphs = self.config.get("validation", {}).get("min_paragraphs", 0)
-            min_words = self.config.get("validation", {}).get("min_words", 0)
-            allow_empty = self.config.get("validation", {}).get("allow_empty", False)
+            validation_config = self.config.get("validation", {})
+            min_paragraphs = validation_config.get("min_paragraphs", 0)
+            min_words = validation_config.get("min_words", 0)
+            min_tables = validation_config.get("min_tables")
+            allow_empty = validation_config.get("allow_empty", False)
+            require_tables = validation_config.get("require_tables", False)
 
             # Check for empty document
             if text_length == 0 and not allow_empty:
@@ -153,6 +156,15 @@ class WordAdapter(BaseAdapter):
             # Warnings for potentially problematic documents
             if paragraph_count == 0 and table_count > 0:
                 warnings.append("Document contains only tables, no text paragraphs")
+
+            if require_tables and table_count == 0:
+                errors.append("Document contains no tables but require_tables is True")
+
+            if isinstance(min_tables, int) and table_count < min_tables:
+                errors.append(
+                    "Document has "
+                    f"{table_count} tables, minimum required: {min_tables}"
+                )
 
             is_valid = len(errors) == 0
 

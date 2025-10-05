@@ -44,6 +44,25 @@ class TestCSVAdapter:
         assert validation.metrics["column_count"] == 6
 
     @pytest.mark.asyncio
+    async def test_validate_missing_required_columns(self, sample_csv_config):
+        """CSV validation should fail when required columns are absent."""
+
+        config = {
+            **sample_csv_config,
+            "validation": {
+                "required_columns": ["name", "email", "employee_id"],
+            },
+        }
+
+        adapter = CSVAdapter(config)
+        raw_data = await adapter.collect()
+        validation = await adapter.validate(raw_data)
+
+        assert validation.is_valid is False
+        assert any("missing required columns" in error for error in validation.errors)
+        assert "employee_id" in validation.metrics["missing_columns"]
+
+    @pytest.mark.asyncio
     async def test_validate_empty_csv(self):
         """Test validation of empty CSV."""
         adapter = CSVAdapter({"source_id": "test", "source_type": "string", "data": "col1\n"})

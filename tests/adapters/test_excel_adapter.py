@@ -45,6 +45,25 @@ class TestExcelAdapter:
         assert validation.metrics["column_count"] == 5
 
     @pytest.mark.asyncio
+    async def test_validate_missing_required_columns(self, sample_excel_config):
+        """Excel validation should fail when required columns are absent."""
+
+        config = {
+            **sample_excel_config,
+            "validation": {
+                "required_columns": ["product", "price", "sku"],
+            },
+        }
+
+        adapter = ExcelAdapter(config)
+        raw_data = await adapter.collect()
+        validation = await adapter.validate(raw_data)
+
+        assert validation.is_valid is False
+        assert any("missing required columns" in error for error in validation.errors)
+        assert "sku" in validation.metrics["missing_columns"]
+
+    @pytest.mark.asyncio
     async def test_validate_empty_excel(self):
         """Test validation of empty Excel sheet."""
         # Just test the validation logic directly with an empty DataFrame

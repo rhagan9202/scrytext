@@ -15,6 +15,8 @@ from pydantic import ValidationError as PydanticValidationError
 from ..exceptions import CollectionError, ConfigurationError, TransformationError, ValidationError
 from ..schemas.payload import ValidationResult
 from ..schemas.transformations import BeautifulSoupTransformationConfig
+from ..utils.logging import setup_logger
+from ..utils.retry import RetryConfig, execute_with_retry
 from .base import BaseAdapter
 
 
@@ -23,6 +25,7 @@ class BeautifulSoupAdapter(BaseAdapter):
 
     SUPPORTED_METHODS = {"GET", "HEAD"}
     DEFAULT_PARSER = "html.parser"
+    logger = setup_logger(__name__, context={"adapter_type": "BeautifulSoupAdapter"})
 
     def __init__(self, config: dict[str, Any]):
         super().__init__(config)
@@ -34,6 +37,10 @@ class BeautifulSoupAdapter(BaseAdapter):
             raise ConfigurationError(
                 f"Invalid BeautifulSoup transformation configuration: {exc}"
             ) from exc
+        try:
+            self._retry_config = RetryConfig.from_mapping(config.get("retry"))
+        except (PydanticValidationError, ValueError) as exc:
+            raise ConfigurationError(f"Invalid retry configuration: {exc}") from exc
 
     async def collect(self) -> dict[str, Any]:
         """Fetch HTML content from a remote URL."""
@@ -83,9 +90,19 @@ class BeautifulSoupAdapter(BaseAdapter):
         self._enforce_url_allowlist(target_url)
         self._enforce_network_policy(target_url)
 
+        retry_config = self._retry_config
+
         try:
             async with httpx.AsyncClient(**client_kwargs) as client:
-                response = await client.request(method, url, headers=headers, params=params)
+                async def _send() -> httpx.Response:
+                    return await client.request(method, url, headers=headers, params=params)
+
+                response = await execute_with_retry(
+                    _send,
+                    method=method,
+                    retry_config=retry_config,
+                    log=self.logger,
+                )
         except httpx.TimeoutException as exc:
             raise CollectionError(f"HTTP request timed out after {timeout} seconds") from exc
         except httpx.HTTPError as exc:

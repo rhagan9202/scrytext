@@ -177,6 +177,64 @@ async def test_process_full_pipeline(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
+async def test_collect_retries_transient_timeout(base_config: dict[str, Any]) -> None:
+  """Retry policy should recover from transient timeouts."""
+
+  attempts = 0
+
+  async def handler(request: httpx.Request) -> httpx.Response:
+    nonlocal attempts
+    attempts += 1
+    if attempts < 2:
+      raise httpx.TimeoutException("simulated timeout")
+    return httpx.Response(200, text="<html><body>ok</body></html>", request=request)
+
+  base_config["retry"] = {
+    "enabled": True,
+    "max_attempts": 3,
+    "backoff_factor": 0.01,
+    "max_backoff": 0.02,
+    "jitter": 0.0,
+  }
+  base_config["_transport"] = httpx.MockTransport(handler)
+
+  adapter = BeautifulSoupAdapter(base_config)
+  raw = await adapter.collect()
+
+  assert raw["status_code"] == 200
+  assert attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_collect_returns_last_response_after_retry_exhaustion(
+  base_config: dict[str, Any]
+) -> None:
+  """When all retries fail, the final HTTP response should be returned."""
+
+  attempts = 0
+
+  async def handler(request: httpx.Request) -> httpx.Response:
+    nonlocal attempts
+    attempts += 1
+    return httpx.Response(503, text="<html>Error</html>", request=request)
+
+  base_config["retry"] = {
+    "enabled": True,
+    "max_attempts": 2,
+    "backoff_factor": 0.01,
+    "max_backoff": 0.02,
+    "jitter": 0.0,
+  }
+  base_config["_transport"] = httpx.MockTransport(handler)
+
+  adapter = BeautifulSoupAdapter(base_config)
+  raw = await adapter.collect()
+
+  assert raw["status_code"] == 503
+  assert attempts == 2
+
+
+@pytest.mark.asyncio
 async def test_collect_disallows_unlisted_host(base_config: dict[str, Any]) -> None:
   """Collection should reject URLs outside the configured allowlist."""
 
