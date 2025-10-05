@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from importlib import import_module
+from typing import Any
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, close_all_sessions, sessionmaker
@@ -40,14 +41,26 @@ def _create_engine() -> Engine:
     database_url = settings.database_url or "sqlite:///./scry_ingestor.db"
 
     connect_args: dict[str, object] = {}
+    pool_kwargs: dict[str, Any] = {}
     if database_url.startswith("sqlite"):
         connect_args = {"check_same_thread": False}
+    else:
+        pool_config = settings.database
+        pool_kwargs = {
+            "pool_size": pool_config.pool_size,
+            "max_overflow": pool_config.max_overflow,
+            "pool_timeout": pool_config.timeout,
+            "pool_pre_ping": pool_config.pre_ping,
+        }
+        if pool_config.recycle_seconds > 0:
+            pool_kwargs["pool_recycle"] = pool_config.recycle_seconds
 
     return create_engine(
         database_url,
         echo=False,
         future=True,
         connect_args=connect_args,
+        **pool_kwargs,
     )
 
 

@@ -27,6 +27,14 @@ retry:
   status_forcelist: [429, 500, 502, 503, 504]
   retry_on_methods: ["GET", "HEAD", "OPTIONS"]
 
+# Response caching (disabled by default; enable for idempotent operations)
+cache:
+  enabled: false
+  ttl_seconds: 60
+  max_size: 256
+  methods: ["GET"]
+  vary_headers: []
+
 # Authentication options (extend as needed)
 auth:
   type: none  # none | basic | bearer

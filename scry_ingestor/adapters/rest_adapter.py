@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
+import hashlib
 import ipaddress
 import json
 import re
+from asyncio import Lock
 from collections.abc import Mapping
+from copy import deepcopy
 from fnmatch import fnmatch
 from typing import Any
 
 import httpx
-from pydantic import ValidationError as PydanticValidationError
+from cachetools import TTLCache
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError as PydanticValidationError,
+    field_validator,
+)
 
 from ..exceptions import CollectionError, ConfigurationError, TransformationError, ValidationError
 from ..schemas.payload import ValidationResult
@@ -18,6 +28,48 @@ from ..schemas.transformations import RESTTransformationConfig
 from ..utils.logging import setup_logger
 from ..utils.retry import RetryConfig, execute_with_retry
 from .base import BaseAdapter
+
+
+class RESTCacheConfig(BaseModel):
+    """Runtime cache configuration for RESTAdapter responses."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    ttl_seconds: float = Field(default=60.0, gt=0)
+    max_size: int = Field(default=256, ge=1)
+    methods: set[str] = Field(default_factory=lambda: {"GET"})
+    vary_headers: list[str] = Field(default_factory=list)
+
+    @field_validator("methods", mode="before")
+    @classmethod
+    def _coerce_methods(cls, value: Any) -> set[str]:
+        if value is None:
+            return {"GET"}
+        if isinstance(value, str):
+            value = [value]
+        if isinstance(value, (list, tuple, set)):
+            normalized = {str(item).upper() for item in value if str(item).strip()}
+            if not normalized:
+                raise ValueError("cache.methods must declare at least one HTTP method")
+            return normalized
+        raise ValueError("cache.methods must be a string or sequence of strings")
+
+    @field_validator("vary_headers", mode="before")
+    @classmethod
+    def _coerce_vary_headers(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = [value]
+        if isinstance(value, (list, tuple, set)):
+            result: list[str] = []
+            for header in value:
+                if not isinstance(header, str) or not header.strip():
+                    raise ValueError("cache.vary_headers entries must be non-empty strings")
+                result.append(header.strip().lower())
+            return result
+        raise ValueError("cache.vary_headers must be a string or sequence of strings")
 
 
 class RESTAdapter(BaseAdapter):
@@ -40,6 +92,26 @@ class RESTAdapter(BaseAdapter):
             self._retry_config = RetryConfig.from_mapping(config.get("retry"))
         except (PydanticValidationError, ValueError) as exc:
             raise ConfigurationError(f"Invalid retry configuration: {exc}") from exc
+        try:
+            self._cache_config = RESTCacheConfig.model_validate(config.get("cache") or {})
+        except PydanticValidationError as exc:
+            raise ConfigurationError(f"Invalid cache configuration: {exc}") from exc
+
+        invalid_methods = self._cache_config.methods - self.SUPPORTED_METHODS
+        if invalid_methods:
+            raise ConfigurationError(
+                "Cache configuration references unsupported HTTP methods: "
+                f"{sorted(invalid_methods)}"
+            )
+
+        self._cache_store: TTLCache[tuple[Any, ...], dict[str, Any]] | None = None
+        self._cache_lock: Lock | None = None
+        if self._cache_config.enabled:
+            self._cache_store = TTLCache(
+                maxsize=self._cache_config.max_size,
+                ttl=self._cache_config.ttl_seconds,
+            )
+            self._cache_lock = Lock()
 
     async def collect(self) -> dict[str, Any]:
         """Perform the HTTP request and return the raw response payload."""
@@ -131,6 +203,19 @@ class RESTAdapter(BaseAdapter):
                         body if isinstance(body, bytes | bytearray) else str(body)
                     )
 
+        cache_key: tuple[Any, ...] | None = None
+        if self._cache_enabled_for_method(method):
+            cache_key = self._build_cache_key(
+                method=method,
+                url=str(target_url),
+                params=params,
+                headers=headers,
+                request_kwargs=request_kwargs,
+            )
+            cached_response = await self._get_cached_response(cache_key)
+            if cached_response is not None:
+                return cached_response
+
         retry_config = self._retry_config
 
         try:
@@ -180,7 +265,7 @@ class RESTAdapter(BaseAdapter):
         except (AttributeError, RuntimeError):
             elapsed_ms = 0
 
-        return {
+        raw_response = {
             "status_code": response.status_code,
             "headers": dict(response.headers),
             "content": response.content,
@@ -195,6 +280,98 @@ class RESTAdapter(BaseAdapter):
                 "body": request_kwargs.get("json", request_kwargs.get("content")),
             },
         }
+
+        if cache_key is not None:
+            await self._store_cached_response(cache_key, raw_response)
+
+        return raw_response
+
+    def _cache_enabled_for_method(self, method: str) -> bool:
+        """Return True when caching is active for the given HTTP method."""
+
+        return self._cache_store is not None and method in self._cache_config.methods
+
+    async def _get_cached_response(
+        self,
+        cache_key: tuple[Any, ...],
+    ) -> dict[str, Any] | None:
+        """Retrieve a cached response when present."""
+
+        if self._cache_store is None or self._cache_lock is None:
+            return None
+        async with self._cache_lock:
+            cached = self._cache_store.get(cache_key)
+        if cached is None:
+            return None
+        return deepcopy(cached)
+
+    async def _store_cached_response(
+        self,
+        cache_key: tuple[Any, ...],
+        payload: dict[str, Any],
+    ) -> None:
+        """Persist a response payload in the cache."""
+
+        if self._cache_store is None or self._cache_lock is None:
+            return
+        async with self._cache_lock:
+            self._cache_store[cache_key] = deepcopy(payload)
+
+    def _build_cache_key(
+        self,
+        *,
+        method: str,
+        url: str,
+        params: Mapping[str, Any],
+        headers: Mapping[str, Any],
+        request_kwargs: Mapping[str, Any],
+    ) -> tuple[Any, ...]:
+        """Construct a stable cache key for the HTTP request."""
+
+        param_items = tuple(
+            sorted((str(key), self._stringify_param_value(value)) for key, value in params.items())
+        )
+
+        header_lookup = {str(key).lower(): str(value) for key, value in headers.items()}
+        header_items = tuple(
+            (header, header_lookup.get(header, ""))
+            for header in self._cache_config.vary_headers
+        )
+
+        body_digest = self._digest_request_body(request_kwargs)
+
+        return method, url, param_items, header_items, body_digest
+
+    @staticmethod
+    def _stringify_param_value(value: Any) -> str:
+        """Normalize query parameter values for cache keys."""
+
+        if isinstance(value, (list, tuple, set)):
+            return ",".join(str(item) for item in value)
+        return str(value)
+
+    def _digest_request_body(self, request_kwargs: Mapping[str, Any]) -> str | None:
+        """Generate a stable digest for request body content."""
+
+        if "json" in request_kwargs:
+            try:
+                normalized = json.dumps(
+                    request_kwargs["json"],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+            except (TypeError, ValueError):  # pragma: no cover - fallback for non-serializable data
+                normalized = repr(request_kwargs["json"])
+            return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+        content = request_kwargs.get("content")
+        if content is None:
+            return None
+        if isinstance(content, (bytes, bytearray)):
+            body_bytes = bytes(content)
+        else:
+            body_bytes = str(content).encode("utf-8")
+        return hashlib.sha256(body_bytes).hexdigest()
 
     async def validate(self, raw_data: dict[str, Any]) -> ValidationResult:
         """Validate response status code and basic constraints."""

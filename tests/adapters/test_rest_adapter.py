@@ -66,6 +66,64 @@ async def test_collect_success(base_config: dict[str, Any]) -> None:
 
 
 @pytest.mark.asyncio
+async def test_collect_uses_cache_for_repeat_requests(base_config: dict[str, Any]) -> None:
+    """Enabling cache should prevent duplicate upstream calls for identical requests."""
+
+    call_count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(200, json={"sequence": call_count}, request=request)
+
+    base_config["cache"] = {
+        "enabled": True,
+        "ttl_seconds": 60,
+        "max_size": 16,
+        "methods": ["GET"],
+        "vary_headers": [],
+    }
+    base_config["_transport"] = httpx.MockTransport(handler)
+
+    adapter = RESTAdapter(base_config)
+
+    first = await adapter.collect()
+    second = await adapter.collect()
+
+    assert first == second
+    assert call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_collect_skips_cache_for_non_cached_methods(base_config: dict[str, Any]) -> None:
+    """Requests using methods not listed in cache.methods should not be cached."""
+
+    call_count = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(200, json={"sequence": call_count}, request=request)
+
+    base_config["method"] = "POST"
+    base_config["cache"] = {
+        "enabled": True,
+        "ttl_seconds": 60,
+        "max_size": 16,
+        "methods": ["GET"],
+    }
+    base_config["_transport"] = httpx.MockTransport(handler)
+
+    adapter = RESTAdapter(base_config)
+
+    first = await adapter.collect()
+    second = await adapter.collect()
+
+    assert first != second
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
 async def test_collect_invalid_method(base_config: dict[str, Any]) -> None:
     """Unsupported HTTP methods should raise CollectionError."""
 

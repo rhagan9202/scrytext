@@ -114,6 +114,18 @@ class AWSSettings(BaseModel):
     region: str | None = None
 
 
+class DatabasePoolSettings(BaseModel):
+    """Connection pooling configuration for the SQLAlchemy engine."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    pool_size: int = Field(default=5, ge=1)
+    max_overflow: int = Field(default=10, ge=0)
+    timeout: float = Field(default=30.0, gt=0)
+    recycle_seconds: int = Field(default=1800, ge=0)
+    pre_ping: bool = True
+
+
 class SecretsManagerSettings(BaseModel):
     """AWS Secrets Manager integration settings."""
 
@@ -174,6 +186,7 @@ class GlobalSettings(BaseSettings):
     log_level: str = "INFO"
     redis_url: str | None = None
     database_url: str | None = None
+    database: DatabasePoolSettings = DatabasePoolSettings()
     config_dir: Path = Path("config")
     fixtures_dir: Path = Path("tests/fixtures")
     aws: AWSSettings = AWSSettings()

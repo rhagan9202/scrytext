@@ -11,6 +11,8 @@
 - 🔍 **Data Validation** - Built-in validation with quality metrics
 - 📊 **Multiple Formats** - Support for JSON, CSV, text, and custom formats
 - 🛡️ **Type Safety** - Full Pydantic validation throughout
+- 🔄 **Connection Pooling** - Tunable SQLAlchemy pools to squeeze the most out of database connections
+- 🧠 **Smart Caching & Streaming** - REST response caching and chunked file readers for massive payloads
 
 ## Quick Start
 
@@ -72,6 +74,23 @@ Runtime configuration now loads from layered YAML templates in `config/`:
 - `settings.development.yaml` &mdash; overrides that relax requirements for local development.
 - `settings.production.yaml` &mdash; production-focused overrides that enforce Kafka security and Redis requirements.
 
+Each template can additionally tune the SQLAlchemy connection pool via the `database`
+section. For example:
+
+```yaml
+database:
+  pool_size: 10
+  max_overflow: 20
+  timeout: 15
+  recycle_seconds: 1800
+  pre_ping: true
+```
+
+All settings can be overridden at runtime with environment variables such as
+`SCRY_DATABASE__POOL_SIZE`. These values flow into `GlobalSettings` and are applied when
+the engine is created, ensuring consistent pooling behaviour for the API and worker
+processes.
+
 Choose the active profile with `SCRY_ENVIRONMENT` (or explicitly set `SCRY_CONFIG_PROFILE`).
 At startup the service loads `settings.base.yaml`, merges the environment-specific override,
 applies environment variables, and validates the result. Missing config files or invalid
@@ -96,6 +115,36 @@ validating the runtime environment.
 Validation happens on every start of the API (and other entry points that call
 `ensure_runtime_configuration`), guaranteeing that required variables defined in the
 templates or the secrets configuration are present before processors go live.
+
+#### REST adapter response caching
+
+To reduce latency for high-churn APIs, the REST adapter now supports an optional TTL
+cache. Enable it by adding a `cache` block to adapter configuration or request payloads:
+
+```yaml
+cache:
+  enabled: true
+  ttl_seconds: 120
+  max_size: 256
+  methods: ["GET"]
+  vary_headers: ["authorization"]
+```
+
+Cached responses are keyed by method, resolved URL, query parameters, selected headers,
+and request body hashes. Duplicate requests served within the TTL reuse the cached payload
+without invoking the upstream API.
+
+#### Streaming helpers for large files
+
+The file reader utilities now expose streaming and asynchronous variants:
+
+- `stream_text_file` / `stream_binary_file` yield chunks without loading the full file
+  into memory.
+- `async_stream_text_file` / `async_stream_binary_file` and their `async_read_*`
+  counterparts leverage background executors for non-blocking ingestion in asyncio loops.
+
+Adapters that work with large local artifacts (CSV, Word, PDF) can adopt these helpers to
+minimize memory pressure and fit better into async workflows.
 
 ### Installation
 

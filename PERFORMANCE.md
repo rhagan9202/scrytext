@@ -67,6 +67,8 @@ Total pipeline latency usually stays under **2 seconds** for medium documents (<
 - Tune retry policies (`config/adapters.yaml`, `RetryConfig`) to avoid long waits on flaky sources.
 - For massive CSV/Excel files, enable chunking (`chunk_size`, `use_streaming` options) to reduce peak memory usage.
 - Utilize cloud processing mode for adapters that support it to offload heavy computation (e.g., AWS Textract for PDFs).
+- Turn on the REST adapter response cache for bursty, idempotent traffic to collapse duplicate upstream requests.
+- Prefer the streaming helpers in `scry_ingestor.utils.file_readers` when ingesting large local files to minimize memory spikes or leverage the new async variants inside event loops.
 
 ## Known Limits
 
