@@ -1,5 +1,29 @@
 """Pytest configuration - no path manipulation, rely on proper package installation."""
+
+from __future__ import annotations
+
+import os
+
 import pytest
+
+from scry_ingestor.models.base import reset_engine
+from scry_ingestor.utils.config import get_settings
+
+
+@pytest.fixture(autouse=True)
+def _ensure_database_url(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory):
+    """Guarantee SCRY_DATABASE_URL is available for runtime validation."""
+
+    if os.getenv("SCRY_DATABASE_URL") is None:
+        db_path = tmp_path_factory.mktemp("sqlite-db") / "ingestion.sqlite"
+        monkeypatch.setenv("SCRY_DATABASE_URL", f"sqlite:///{db_path}")
+    if os.getenv("SCRY_API_KEYS") is None:
+        monkeypatch.setenv("SCRY_API_KEYS", '["test-key"]')
+
+    get_settings.cache_clear()
+    yield
+    reset_engine()
+    get_settings.cache_clear()
 
 
 @pytest.fixture

@@ -20,6 +20,26 @@
 - Poetry 1.7.0+
 - Docker & Docker Compose (for containerized deployment)
 
+### Configuration
+
+Scry_Ingestor reads critical secrets (database, Redis, API keys) from environment
+variables. Copy `.env.example` to `.env` and adjust the values before running the
+service locally or via Docker Compose:
+
+```bash
+cp .env.example .env
+# update database credentials, API keys, etc.
+```
+
+> **Required values**
+>
+> - `SCRY_DATABASE_URL` – PostgreSQL connection string (Compose uses the
+>   Postgres service by default)
+> - `SCRY_API_KEYS` – comma-separated list of API keys accepted by the REST API
+
+The application validates these settings on startup and will exit if they are
+missing, preventing partially configured deployments.
+
 ### Installation
 
 #### As a Python Package

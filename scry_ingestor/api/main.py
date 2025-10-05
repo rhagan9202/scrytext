@@ -6,6 +6,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 
 from ..exceptions import ScryIngestorError
+from ..utils.config import ensure_runtime_configuration, get_settings
 from ..utils.logging import setup_logger
 
 logger = setup_logger(__name__, context={"adapter_type": "FastAPI"})
@@ -15,6 +16,7 @@ logger = setup_logger(__name__, context={"adapter_type": "FastAPI"})
 async def lifespan(app: FastAPI):  # type: ignore
     """Application lifespan context manager for startup/shutdown."""
     # Startup
+    ensure_runtime_configuration(get_settings())
     logger.info("Scry_Ingestor API starting up...")
     yield
     # Shutdown

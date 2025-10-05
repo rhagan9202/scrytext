@@ -110,6 +110,8 @@ class GlobalSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="SCRY_",
         env_nested_delimiter="__",
+        env_file=(".env", ".env.local", ".env.docker"),
+        env_file_encoding="utf-8",
         extra="ignore",
     )
 
@@ -155,6 +157,23 @@ class GlobalSettings(BaseSettings):
         if isinstance(value, str):
             return Path(value).expanduser()
         return value
+
+
+def ensure_runtime_configuration(settings: GlobalSettings) -> None:
+    """Raise :class:`ConfigurationError` when critical secrets are missing."""
+
+    missing: list[str] = []
+    if not settings.database_url:
+        missing.append("SCRY_DATABASE_URL")
+    if not settings.api_keys:
+        missing.append("SCRY_API_KEYS")
+
+    if missing:
+        joined = ", ".join(missing)
+        raise ConfigurationError(
+            "Missing required environment variables: "
+            f"{joined}. Configure them via a .env file or deployment secrets."
+        )
 
 
 @lru_cache(maxsize=1)

@@ -6,11 +6,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     environment:
-      - SCRY_LOG_LEVEL=INFO
-      - SCRY_AWS__REGION=${AWS_REGION:-us-east-1}
+      SCRY_LOG_LEVEL: ${SCRY_LOG_LEVEL:-INFO}
+      SCRY_AWS__REGION: ${SCRY_AWS__REGION:-us-east-1}
     volumes:
       - ./config:/app/config:ro
       - ./tests/fixtures:/app/fixtures:ro
@@ -36,9 +38,9 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      - POSTGRES_DB=scry_ingestor
-      - POSTGRES_USER=scry
-      - POSTGRES_PASSWORD=scry_dev_password
+      POSTGRES_DB: ${POSTGRES_DB:-scry_ingestor}
+      POSTGRES_USER: ${POSTGRES_USER:-scry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
     ports:
       - "5432:5432"
     volumes:
@@ -52,11 +54,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - .env
     command: celery -A scry_ingestor.tasks.celery_app worker --loglevel=info
     environment:
-      - SCRY_LOG_LEVEL=INFO
-      - SCRY_REDIS_URL=redis://redis:6379/0
-      - SCRY_AWS__REGION=${AWS_REGION:-us-east-1}
+      SCRY_LOG_LEVEL: ${SCRY_LOG_LEVEL:-INFO}
+      SCRY_REDIS_URL: ${SCRY_REDIS_URL:-redis://redis:6379/0}
+      SCRY_AWS__REGION: ${SCRY_AWS__REGION:-us-east-1}
     volumes:
       - ./config:/app/config:ro
       - ./tests/fixtures:/app/fixtures:ro

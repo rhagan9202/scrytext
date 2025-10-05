@@ -13,6 +13,7 @@ from ..messaging.publisher import get_ingestion_publisher
 from ..models.repository import build_error_record, build_success_record, persist_ingestion_record
 from ..monitoring.metrics import record_ingestion_attempt, record_ingestion_error
 from ..schemas.payload import IngestionPayload
+from ..utils.config import ensure_runtime_configuration, get_settings
 from ..utils.logging import log_ingestion_attempt, setup_logger
 from .celery_app import celery_app
 
@@ -89,6 +90,7 @@ def _validation_summary(payload: IngestionPayload) -> dict[str, Any]:
 def run_ingestion_pipeline(adapter_name: str, request_payload: dict[str, Any]) -> dict[str, Any]:
     """Execute the ingestion workflow synchronously for Celery workers."""
 
+    ensure_runtime_configuration(get_settings())
     config, correlation_id = _prepare_source_config(adapter_name, request_payload)
 
     try:
