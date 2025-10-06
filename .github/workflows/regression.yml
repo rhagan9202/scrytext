@@ -1,0 +1,339 @@
+name: Regression Test Suite
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - '*'
+  schedule:
+    # Run nightly at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  POETRY_VERSION: 1.7.1
+  PYTHON_VERSION: "3.12"
+  COVERAGE_OVERALL_THRESHOLD: 75
+  COVERAGE_MODULE_THRESHOLD: 60
+
+jobs:
+  lint:
+    name: Code Quality (Lint & Format)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: poetry
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      - name: Run Ruff linter
+        run: |
+          poetry run ruff check scry_ingestor tests --output-format=github
+          
+      - name: Run Black formatter check
+        run: poetry run black --check scry_ingestor tests
+
+      - name: Run MyPy type checker
+        run: poetry run mypy scry_ingestor
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+      fail-fast: false
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: poetry
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      - name: Run unit tests
+        run: |
+          poetry run pytest tests/adapters tests/utils tests/schemas \
+            -v \
+            --cov=scry_ingestor \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junitxml=junit-unit-${{ matrix.python-version }}.xml
+
+      - name: Upload unit test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-results-${{ matrix.python-version }}
+          path: junit-unit-${{ matrix.python-version }}.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: unit-tests-${{ matrix.python-version }}
+          name: unit-coverage-${{ matrix.python-version }}
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: poetry
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      - name: Run integration tests
+        env:
+          REDIS_URL: redis://localhost:6379
+          SCRY_API_KEYS: '["test-key-1", "test-key-2"]'
+        run: |
+          poetry run pytest tests/api tests/tasks tests/messaging tests/models \
+            -v \
+            --cov=scry_ingestor \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junitxml=junit-integration.xml
+
+      - name: Upload integration test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: integration-test-results
+          path: junit-integration.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: integration-tests
+          name: integration-coverage
+
+  smoke-tests:
+    name: End-to-End Smoke Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: poetry
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      - name: Run REST pipeline smoke test
+        run: poetry run python tests/smoke/test_rest_pipeline.py
+
+      - name: Run PDF pipeline smoke test
+        run: poetry run python tests/smoke/test_pdf_pipeline.py
+
+      - name: Run Word pipeline smoke test
+        run: poetry run python tests/smoke/test_word_pipeline.py
+
+  coverage-report:
+    name: Coverage Analysis & Thresholds
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: poetry
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Install dependencies
+        run: poetry install --with dev --no-interaction
+
+      - name: Run complete test suite with coverage
+        run: |
+          poetry run pytest tests/ \
+            -v \
+            --cov=scry_ingestor \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-report=json \
+            --cov-fail-under=${{ env.COVERAGE_OVERALL_THRESHOLD }}
+
+      - name: Check module-level coverage thresholds
+        run: |
+          poetry run python scripts/check_module_coverage.py \
+            --threshold ${{ env.COVERAGE_MODULE_THRESHOLD }} \
+            --coverage-file coverage.json
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: |
+            htmlcov/
+            coverage.xml
+            coverage.json
+            .coverage
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          flags: complete
+          name: complete-coverage
+          fail_ci_if_error: true
+
+      - name: Comment PR with coverage
+        if: github.event_name == 'pull_request'
+        uses: py-cov-action/python-coverage-comment-action@v3
+        with:
+          GITHUB_TOKEN: ${{ github.token }}
+          MINIMUM_GREEN: 80
+          MINIMUM_ORANGE: 70
+
+  security-scan:
+    name: Security & Dependency Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+
+      - name: Check for security vulnerabilities
+        run: |
+          poetry export -f requirements.txt --output requirements.txt --without-hashes
+          pip install safety
+          safety check --file requirements.txt --json
+
+      - name: Run Bandit security linter
+        run: |
+          pip install bandit
+          bandit -r scry_ingestor -f json -o bandit-report.json || true
+
+      - name: Upload security scan results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-results
+          path: |
+            bandit-report.json
+
+  regression-summary:
+    name: Regression Test Summary
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests, integration-tests, smoke-tests, coverage-report, security-scan]
+    if: always()
+    steps:
+      - name: Check regression status
+        run: |
+          echo "=== Regression Test Suite Summary ==="
+          echo "Lint: ${{ needs.lint.result }}"
+          echo "Unit Tests: ${{ needs.unit-tests.result }}"
+          echo "Integration Tests: ${{ needs.integration-tests.result }}"
+          echo "Smoke Tests: ${{ needs.smoke-tests.result }}"
+          echo "Coverage: ${{ needs.coverage-report.result }}"
+          echo "Security: ${{ needs.security-scan.result }}"
+          
+          if [ "${{ needs.lint.result }}" != "success" ] || \
+             [ "${{ needs.unit-tests.result }}" != "success" ] || \
+             [ "${{ needs.integration-tests.result }}" != "success" ] || \
+             [ "${{ needs.smoke-tests.result }}" != "success" ] || \
+             [ "${{ needs.coverage-report.result }}" != "success" ]; then
+            echo "❌ Regression suite failed"
+            exit 1
+          fi
+          echo "✅ All regression tests passed"
+
+      - name: Create summary
+        run: |
+          echo "## 🎯 Regression Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint & Format | ${{ needs.lint.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Unit Tests | ${{ needs.unit-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Integration Tests | ${{ needs.integration-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Smoke Tests | ${{ needs.smoke-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Coverage (≥${{ env.COVERAGE_OVERALL_THRESHOLD }}%) | ${{ needs.coverage-report.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Security Scan | ${{ needs.security-scan.result }} |" >> $GITHUB_STEP_SUMMARY
