@@ -104,11 +104,14 @@ jobs:
           path: junit-unit-${{ matrix.python-version }}.xml
 
       - name: Upload coverage to Codecov
+        if: ${{ secrets.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
           flags: unit-tests-${{ matrix.python-version }}
           name: unit-coverage-${{ matrix.python-version }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   integration-tests:
     name: Integration Tests
@@ -163,11 +166,14 @@ jobs:
           path: junit-integration.xml
 
       - name: Upload coverage to Codecov
+        if: ${{ secrets.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
           flags: integration-tests
           name: integration-coverage
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   smoke-tests:
     name: End-to-End Smoke Tests
@@ -252,12 +258,14 @@ jobs:
             .coverage
 
       - name: Upload coverage to Codecov
+        if: ${{ secrets.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
           flags: complete
           name: complete-coverage
-          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
       - name: Comment PR with coverage
         if: github.event_name == 'pull_request'
