@@ -11,8 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    environment:
-      name: pypi
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -33,7 +33,7 @@ jobs:
         run: poetry install --only main --no-interaction --no-ansi
 
       - name: Run pip-audit
-        uses: pypa/gh-action-pip-audit@v1
+        uses: pypa/gh-action-pip-audit@v1.1.0
         with:
           virtual-environment: .venv
           ignore-vulns: ""
