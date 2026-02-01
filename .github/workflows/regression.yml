@@ -277,7 +277,7 @@ jobs:
       - name: Check for security vulnerabilities
         run: |
           poetry export -f requirements.txt --output requirements.txt --without-hashes
-          pip install safety
+          pip install "safety<3"
           safety check --file requirements.txt --json
 
       - name: Run Bandit security linter
