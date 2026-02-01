@@ -41,15 +41,25 @@ jobs:
       - name: Install dependencies
         run: poetry install --with dev --no-interaction
 
+      - name: Prepare lint report directory
+        run: mkdir -p lint-reports
+
       - name: Run Ruff linter
         run: |
-          poetry run ruff check scry_ingestor tests --output-format=github
+          poetry run ruff check scry_ingestor tests --output-format=github | tee lint-reports/ruff.txt
           
       - name: Run Black formatter check
-        run: poetry run black --check scry_ingestor tests
+        run: poetry run black --check --diff scry_ingestor tests | tee lint-reports/black.diff
 
       - name: Run MyPy type checker
-        run: poetry run mypy scry_ingestor
+        run: poetry run mypy scry_ingestor --pretty | tee lint-reports/mypy.txt
+
+      - name: Upload lint reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-reports
+          path: lint-reports/
 
   unit-tests:
     name: Unit Tests
