@@ -68,13 +68,6 @@ docker-compose.override.yml
 .DS_Store
 Thumbs.db
 
-# Data
-data/
-*.csv
-*.json
-!tests/fixtures/*.json
-!config/*.json
-
 # AWS
 .aws/
 

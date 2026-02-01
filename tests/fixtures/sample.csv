@@ -1,0 +1,6 @@
+name,email,age,department,salary,active
+Alice Johnson,alice@example.com,28,Engineering,75000,true
+Bob Smith,bob@example.com,35,Marketing,65000,true
+Carol White,carol@example.com,42,Sales,80000,true
+David Brown,david@example.com,31,Engineering,72000,false
+Eve Davis,eve@example.com,29,HR,58000,true
