@@ -89,7 +89,7 @@ jobs:
 
       - name: Run unit tests
         run: |
-          poetry run pytest tests/adapters tests/utils tests/schemas \
+          poetry run pytest tests/adapters tests/utils tests/cli tests/monitoring tests/test_settings.py \
             -v \
             --cov=scry_ingestor \
             --cov-report=xml \
