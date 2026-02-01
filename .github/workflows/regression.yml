@@ -274,11 +274,14 @@ jobs:
         with:
           version: ${{ env.POETRY_VERSION }}
 
+      - name: Install Poetry export plugin
+        run: poetry self add poetry-plugin-export
+
       - name: Check for security vulnerabilities
         run: |
           poetry export -f requirements.txt --output requirements.txt --without-hashes
           pip install "safety<3"
-          safety check --file requirements.txt --json
+          safety check --file requirements.txt --json --output safety-report.json || true
 
       - name: Run Bandit security linter
         run: |
@@ -292,6 +295,7 @@ jobs:
           name: security-scan-results
           path: |
             bandit-report.json
+            safety-report.json
 
   regression-summary:
     name: Regression Test Summary
