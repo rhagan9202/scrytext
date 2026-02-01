@@ -179,7 +179,6 @@ class IngestionEventPublisher:
                 self._producer.flush(timeout=self._publish_timeout)
             except Exception:  # pragma: no cover - defensive
                 logger.debug("Kafka producer flush timed out", extra={"status": "warning"})
-            self._producer.close()
 
     def health_status(self, timeout: float = 2.0) -> dict[str, str]:
         """Return Kafka connectivity status for health checks."""

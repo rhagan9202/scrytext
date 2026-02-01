@@ -83,9 +83,20 @@ class JSONAdapter(BaseAdapter):
             # Additional validation based on expected schema
             expected_schema = self.config.get("expected_schema")
             if expected_schema:
-                missing_keys = set(expected_schema) - set(parsed.keys())
-                if missing_keys:
-                    warnings.append(f"Missing expected keys: {missing_keys}")
+                if isinstance(parsed, dict):
+                    if isinstance(expected_schema, (list, tuple, set)):
+                        missing_keys = set(expected_schema) - set(parsed.keys())
+                        if missing_keys:
+                            warnings.append(f"Missing expected keys: {missing_keys}")
+                    else:
+                        warnings.append(
+                            "expected_schema must be a sequence of keys for JSON objects"
+                        )
+                else:
+                    warnings.append("expected_schema ignored for non-object JSON payloads")
+
+            if self.config.get("flatten", False) and not isinstance(parsed, dict):
+                warnings.append("flatten ignored because JSON payload is not an object")
 
         except json.JSONDecodeError as e:
             errors.append(f"Invalid JSON: {e}")
@@ -116,7 +127,8 @@ class JSONAdapter(BaseAdapter):
             # Apply any transformations specified in config
             if self.config.get("flatten", False):
                 # Example: flatten nested structures (simplified)
-                parsed = self._flatten_dict(parsed)
+                if isinstance(parsed, dict):
+                    parsed = self._flatten_dict(parsed)
 
             return dict(parsed) if isinstance(parsed, dict) else parsed
 

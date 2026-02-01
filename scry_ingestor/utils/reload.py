@@ -24,7 +24,8 @@ class ConfigReloader:
     def __init__(self) -> None:
         """Initialize configuration reloader."""
         self._config_cache: dict[str, dict[str, Any]] = {}
-        self._config_dir = Path(__file__).parent.parent.parent / "config"
+        settings = get_settings()
+        self._config_dir = Path(settings.config_dir)
 
     def reload_adapter_configs(self) -> dict[str, Any]:
         """
