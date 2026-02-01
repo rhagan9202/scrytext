@@ -76,9 +76,45 @@ class JSONAdapter(BaseAdapter):
 
         # Check if data is valid JSON
         try:
-            parsed = json.loads(raw_data)
+            parsed = self._load_json(raw_data)
             metrics["valid_json"] = True
-            metrics["data_size_bytes"] = len(raw_data)
+            size_bytes = len(raw_data.encode("utf-8"))
+            metrics["data_size_bytes"] = size_bytes
+
+            validation_cfg = self._resolve_validation_config()
+            max_size_bytes = validation_cfg.get("max_size_bytes")
+            if isinstance(max_size_bytes, int) and max_size_bytes > 0:
+                if size_bytes > max_size_bytes:
+                    errors.append(
+                        f"JSON payload is {size_bytes} bytes, exceeds limit {max_size_bytes}"
+                    )
+
+            required_fields = validation_cfg.get("required_fields")
+            if required_fields is not None:
+                if isinstance(parsed, dict):
+                    if isinstance(required_fields, (list, tuple, set)):
+                        missing_required = set(required_fields) - set(parsed.keys())
+                        if missing_required:
+                            errors.append(
+                                f"Missing required fields: {sorted(missing_required)}"
+                            )
+                    else:
+                        warnings.append("required_fields must be a sequence of keys")
+                else:
+                    warnings.append("required_fields ignored for non-object JSON payloads")
+
+            allow_null_values = validation_cfg.get("allow_null_values", True)
+            if not allow_null_values:
+                if isinstance(parsed, dict):
+                    null_keys = [key for key, value in parsed.items() if value is None]
+                    if null_keys:
+                        errors.append(
+                            "Null values not permitted for keys: "
+                            + ", ".join(sorted(null_keys))
+                        )
+                elif isinstance(parsed, list):
+                    if any(item is None for item in parsed):
+                        errors.append("Null values not permitted in JSON list payload")
 
             # Additional validation based on expected schema
             expected_schema = self.config.get("expected_schema")
@@ -95,10 +131,14 @@ class JSONAdapter(BaseAdapter):
                 else:
                     warnings.append("expected_schema ignored for non-object JSON payloads")
 
-            if self.config.get("flatten", False) and not isinstance(parsed, dict):
+            flatten_enabled, _ = self._resolve_flatten_config()
+            if flatten_enabled and not isinstance(parsed, dict):
                 warnings.append("flatten ignored because JSON payload is not an object")
 
         except json.JSONDecodeError as e:
+            errors.append(f"Invalid JSON: {e}")
+            metrics["valid_json"] = False
+        except ValueError as e:
             errors.append(f"Invalid JSON: {e}")
             metrics["valid_json"] = False
 
@@ -122,26 +162,103 @@ class JSONAdapter(BaseAdapter):
             TransformationError: If JSON parsing fails
         """
         try:
-            parsed = json.loads(raw_data)
+            parsed = self._load_json(raw_data)
 
             # Apply any transformations specified in config
-            if self.config.get("flatten", False):
+            flatten_enabled, max_depth = self._resolve_flatten_config()
+            if flatten_enabled:
                 # Example: flatten nested structures (simplified)
                 if isinstance(parsed, dict):
-                    parsed = self._flatten_dict(parsed)
+                    parsed = self._flatten_dict(parsed, max_depth=max_depth)
 
             return dict(parsed) if isinstance(parsed, dict) else parsed
 
         except json.JSONDecodeError as e:
             raise TransformationError(f"Failed to parse JSON: {e}")
+        except ValueError as e:
+            raise TransformationError(f"Failed to parse JSON: {e}")
 
-    def _flatten_dict(self, d: dict[str, Any], parent_key: str = "") -> dict[str, Any]:
+    def _resolve_json_options(self) -> dict[str, Any]:
+        """Return JSON parsing options from config."""
+
+        options = self.config.get("json_options")
+        if isinstance(options, dict):
+            return options
+        return {}
+
+    def _resolve_validation_config(self) -> dict[str, Any]:
+        """Return validation config from config."""
+
+        validation = self.config.get("validation")
+        if isinstance(validation, dict):
+            return validation
+        return {}
+
+    def _resolve_flatten_config(self) -> tuple[bool, int | None]:
+        """Return flatten settings and max depth."""
+
+        json_options = self._resolve_json_options()
+        transform_cfg = self.config.get("transformation")
+        if not isinstance(transform_cfg, dict):
+            transform_cfg = {}
+
+        flatten_setting = self.config.get("flatten")
+        if flatten_setting is None:
+            flatten_setting = json_options.get("flatten")
+        if flatten_setting is None:
+            flatten_setting = transform_cfg.get("flatten_nested")
+
+        max_depth = transform_cfg.get("max_depth")
+        if isinstance(max_depth, bool):
+            max_depth = None
+        if max_depth is not None:
+            try:
+                max_depth = int(max_depth)
+            except (TypeError, ValueError):
+                max_depth = None
+        if isinstance(max_depth, int) and max_depth < 0:
+            max_depth = None
+
+        return bool(flatten_setting), max_depth
+
+    def _load_json(self, raw_data: str) -> Any:
+        """Parse JSON with strictness based on config."""
+
+        options = self._resolve_json_options()
+        strict_value = options.get("strict")
+        strict = True if strict_value is None else bool(strict_value)
+
+        if strict:
+            def _reject_constants(value: str) -> Any:
+                raise ValueError(f"Invalid constant in JSON: {value}")
+
+            return json.loads(raw_data, parse_constant=_reject_constants)
+
+        return json.loads(raw_data)
+
+    def _flatten_dict(
+        self,
+        d: dict[str, Any],
+        parent_key: str = "",
+        max_depth: int | None = None,
+        current_depth: int = 0,
+    ) -> dict[str, Any]:
         """Helper to flatten nested dictionaries."""
         items: list[tuple[str, Any]] = []
         for key, value in d.items():
             new_key = f"{parent_key}.{key}" if parent_key else key
             if isinstance(value, dict):
-                items.extend(self._flatten_dict(value, new_key).items())
+                if max_depth is not None and current_depth >= max_depth:
+                    items.append((new_key, value))
+                else:
+                    items.extend(
+                        self._flatten_dict(
+                            value,
+                            new_key,
+                            max_depth=max_depth,
+                            current_depth=current_depth + 1,
+                        ).items()
+                    )
             else:
                 items.append((new_key, value))
         return dict(items)

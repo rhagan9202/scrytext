@@ -1,6 +1,7 @@
 """Unstructured adapter for PDF documents using state-of-the-art extraction."""
 
 import io
+import time
 from pathlib import Path
 from typing import Any
 
@@ -142,6 +143,10 @@ class PDFAdapter(BaseAdapter):
         warnings: list[str] = []
         metrics: dict[str, Any] = {}
 
+        table_settings = self.config.get("table_settings")
+        if not isinstance(table_settings, dict):
+            table_settings = None
+
         try:
             pdfplumber_doc = raw_data["pdfplumber_doc"]
             pymupdf_doc = raw_data["pymupdf_doc"]
@@ -172,7 +177,10 @@ class PDFAdapter(BaseAdapter):
                         total_words += len(text.split())
 
                     # Count tables
-                    tables = page.find_tables()
+                    if table_settings:
+                        tables = page.find_tables(table_settings=table_settings)
+                    else:
+                        tables = page.find_tables()
                     table_count += len(tables)
 
                     # Check for images
@@ -263,6 +271,34 @@ class PDFAdapter(BaseAdapter):
         transformation_config = self._transformation
         pdfplumber_doc = raw_data["pdfplumber_doc"]
         pymupdf_doc = raw_data["pymupdf_doc"]
+        table_settings = self.config.get("table_settings")
+        if not isinstance(table_settings, dict):
+            table_settings = None
+        performance_cfg = self.config.get("performance")
+        if not isinstance(performance_cfg, dict):
+            performance_cfg = {}
+        max_pages = performance_cfg.get("max_pages")
+        if isinstance(max_pages, bool):
+            max_pages = None
+        if max_pages is not None:
+            try:
+                max_pages = int(max_pages)
+            except (TypeError, ValueError):
+                max_pages = None
+        if isinstance(max_pages, int) and max_pages <= 0:
+            max_pages = None
+        page_timeout = performance_cfg.get("page_timeout")
+        if page_timeout is not None:
+            try:
+                page_timeout = float(page_timeout)
+            except (TypeError, ValueError):
+                page_timeout = None
+
+        ocr_cfg = self.config.get("ocr")
+        if not isinstance(ocr_cfg, dict):
+            ocr_cfg = {}
+        ocr_enabled = bool(ocr_cfg.get("enabled", False))
+        ocr_language = str(ocr_cfg.get("language", "eng") or "eng")
 
         result: dict[str, Any] = {
             "pages": [],
@@ -295,9 +331,13 @@ class PDFAdapter(BaseAdapter):
         text_trim_limit = transformation_config.max_text_chars_per_page
 
         pages_to_process = pdfplumber_doc.pages
+        page_index_offset = 0
         if page_range:
             start, end = page_range
             pages_to_process = pdfplumber_doc.pages[start:end]
+            page_index_offset = start
+        if isinstance(max_pages, int):
+            pages_to_process = pages_to_process[:max_pages]
 
         total_text_length = 0
         total_tables = 0
@@ -306,6 +346,8 @@ class PDFAdapter(BaseAdapter):
         trimmed_characters = 0
 
         for page_num, page in enumerate(pages_to_process, 1):
+            page_start_time = time.monotonic()
+            pymupdf_index = page_index_offset + (page_num - 1)
             page_data: dict[str, Any] = {
                 "page_number": page_num,
                 "text": "",
@@ -328,6 +370,22 @@ class PDFAdapter(BaseAdapter):
                 page_data["error"] = f"Text extraction failed: {str(exc)}"
                 page_text = ""
 
+            if ocr_enabled and not page_text.strip():
+                try:
+                    pymupdf_page = pymupdf_doc.load_page(pymupdf_index)
+                    if hasattr(pymupdf_page, "get_textpage_ocr"):
+                        textpage = pymupdf_page.get_textpage_ocr(language=ocr_language)
+                        page_text = (
+                            pymupdf_page.get_text("text", textpage=textpage) or ""
+                        )
+                        page_data["ocr_used"] = True
+                    else:
+                        page_data["ocr_warning"] = (
+                            "OCR requested but not supported by installed PyMuPDF"
+                        )
+                except Exception as exc:
+                    page_data["ocr_error"] = f"OCR failed: {str(exc)}"
+
             original_length = len(page_text)
             if text_trim_limit and original_length > text_trim_limit:
                 trimmed_amount = original_length - text_trim_limit
@@ -346,7 +404,10 @@ class PDFAdapter(BaseAdapter):
             # Extract tables with pdfplumber (best-in-class)
             if extract_tables:
                 try:
-                    tables = page.extract_tables()
+                    if table_settings:
+                        tables = page.extract_tables(table_settings=table_settings)
+                    else:
+                        tables = page.extract_tables()
                     if tables:
                         page_data["tables"] = tables
                         total_tables += len(tables)
@@ -375,6 +436,12 @@ class PDFAdapter(BaseAdapter):
 
             result["pages"].append(page_data)
 
+            if page_timeout is not None:
+                page_elapsed = time.monotonic() - page_start_time
+                if page_elapsed > page_timeout:
+                    page_data["page_timeout_seconds"] = page_timeout
+                    page_data["page_elapsed_seconds"] = round(page_elapsed, 4)
+
         # Summary statistics
         result["summary"] = {
             "total_pages": len(pages_to_process),
@@ -386,6 +453,7 @@ class PDFAdapter(BaseAdapter):
             ),
             "trimmed_pages": trimmed_pages,
             "trimmed_characters": trimmed_characters,
+            "ocr_enabled": ocr_enabled,
         }
 
         # Optionally combine all page text

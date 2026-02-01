@@ -79,7 +79,7 @@ def test_run_ingestion_pipeline_publishes_event(
     assert published_payload.metadata.correlation_id == "celery-corr-1"
     assert result["status"] == "success"
     assert result["payload"]["metadata"]["correlation_id"] == "celery-corr-1"
-    assert result["payload"]["metadata"]["adapter_type"] == "JSONAdapter"
+    assert result["payload"]["metadata"]["adapter_type"] == "json"
 
 
 def test_registered_tasks_include_json_adapter():
@@ -101,7 +101,7 @@ def test_registered_tasks_include_json_adapter():
     # Call the task's run method directly to avoid Celery broker dependencies.
     result = task.run(payload)
     assert result["status"] == "success"
-    assert result["payload"]["metadata"]["adapter_type"] == "JSONAdapter"
+    assert result["payload"]["metadata"]["adapter_type"] == "json"
 
 
 def test_run_ingestion_pipeline_persists_success(
@@ -129,7 +129,7 @@ def test_run_ingestion_pipeline_persists_success(
     record = records[0]
     assert record.status == "success"
     assert record.correlation_id == "celery-db-success"
-    assert record.adapter_type == "JSONAdapter"
+    assert record.adapter_type == "json"
 
 
 def test_run_ingestion_pipeline_persists_error(

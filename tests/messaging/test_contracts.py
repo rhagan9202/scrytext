@@ -21,7 +21,7 @@ def sample_payload() -> IngestionPayload:
         data={"records": 3, "status": "processed"},
         metadata=IngestionMetadata(
             source_id="contract-source",
-            adapter_type="JSONAdapter",
+            adapter_type="json",
             timestamp="2024-10-05T12:00:00Z",
             processing_duration_ms=275,
             processing_mode="local",

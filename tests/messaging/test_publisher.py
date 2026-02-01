@@ -47,7 +47,7 @@ def _build_payload() -> IngestionPayload:
         data={"records": 10},
         metadata=IngestionMetadata(
             source_id="source-123",
-            adapter_type="JSONAdapter",
+            adapter_type="json",
             timestamp="2024-01-01T00:00:00Z",
             processing_duration_ms=150,
             processing_mode="local",
@@ -87,7 +87,7 @@ def test_publish_success_uses_serializer_and_producer(monkeypatch: pytest.Monkey
     publisher.publish_success(payload)
 
     assert fake_producer.produced == [("test-topic", b"encoded-record")]
-    assert captured["record"]["adapter"] == "JSONAdapter"
+    assert captured["record"]["adapter"] == "json"
     assert captured["record"]["validation"]["warning_count"] == 1
 
     publisher.close()
@@ -142,4 +142,3 @@ def test_health_status_ok(monkeypatch: pytest.MonkeyPatch) -> None:
     assert status["status"] == "ok"
 
     get_settings.cache_clear()
-

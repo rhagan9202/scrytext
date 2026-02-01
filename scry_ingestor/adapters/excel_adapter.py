@@ -128,8 +128,31 @@ class ExcelAdapter(BaseAdapter):
         )
 
     async def transform(self, raw_data: pd.DataFrame) -> pd.DataFrame:
-        # Optionally clean or normalize data here
-        return raw_data
+        return self._apply_transformations(raw_data)
+
+    def _apply_transformations(self, raw_data: pd.DataFrame) -> pd.DataFrame:
+        """Apply optional transformations configured for the adapter."""
+
+        transform_cfg = self.config.get("transformation")
+        if not isinstance(transform_cfg, dict):
+            transform_cfg = {}
+
+        result = raw_data.copy()
+
+        if transform_cfg.get("strip_whitespace", False):
+            object_columns = result.select_dtypes(include=["object", "string"]).columns
+            for column in object_columns:
+                result[column] = result[column].apply(
+                    lambda value: value.strip() if isinstance(value, str) else value
+                )
+
+        if transform_cfg.get("lowercase_columns", False):
+            result.columns = [str(column).lower() for column in result.columns]
+
+        if transform_cfg.get("drop_duplicates", False):
+            result = result.drop_duplicates()
+
+        return result
 
     def _resolve_excel_options(self) -> dict[str, Any]:
         """Return sanitized pandas options for Excel ingestion."""

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
-from typing import Any, cast
+import threading
+from collections.abc import Awaitable, Mapping
+from typing import Any, TypeVar, cast
 
 from celery import Task
 
@@ -39,6 +40,34 @@ RETRYABLE_ERROR_REGISTRY: dict[str, type[Exception]] = {
     "TransformationError": TransformationError,
     "ValidationError": ValidationError,
 }
+
+T = TypeVar("T")
+
+
+def _run_coroutine(coro_factory: Callable[[], Awaitable[T]]) -> T:
+    """Run a coroutine from sync context, even when an event loop is active."""
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro_factory())
+
+    result_container: dict[str, T] = {}
+    error_container: dict[str, BaseException] = {}
+
+    def _runner() -> None:
+        try:
+            result_container["result"] = asyncio.run(coro_factory())
+        except BaseException as exc:
+            error_container["error"] = exc
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+    thread.join()
+
+    if error_container:
+        raise error_container["error"]
+    return result_container["result"]
 
 
 def _persist_success(payload: IngestionPayload, validation_summary: dict[str, Any]) -> None:
@@ -268,7 +297,7 @@ def run_ingestion_pipeline(adapter_name: str, request_payload: dict[str, Any]) -
     try:
         adapter_cls = get_adapter(adapter_name)
         adapter = adapter_cls(config)
-        payload = asyncio.run(adapter.process())
+        payload = _run_coroutine(adapter.process)
     except AdapterNotFoundError as exc:
         circuit.record_failure(adapter_name)
         error = _handle_task_error(
@@ -345,8 +374,19 @@ def _register_task(adapter_name: str) -> None:
     settings = get_settings()
 
     @celery_app.task(name=task_name, bind=True, max_retries=settings.celery_max_retries)
-    def _task(self: Any, request_payload: dict[str, Any]) -> dict[str, Any]:
+    def _task(
+        self: Any,
+        request_payload: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """Run the ingestion pipeline for the bound adapter."""
+
+        if request_payload is None:
+            request_payload = {}
+        if kwargs:
+            merged_payload = dict(request_payload)
+            merged_payload.update(kwargs)
+            request_payload = merged_payload
 
         try:
             return run_ingestion_pipeline(adapter_name, request_payload)

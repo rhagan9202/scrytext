@@ -125,7 +125,7 @@ async def test_error_log_includes_validation_summary(
             headers={"X-API-Key": "valid-key"},
         )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
     assert body["status"] == "error"
 
@@ -207,7 +207,7 @@ async def test_success_persists_ingestion_record(
     assert len(records) == 1
     record = records[0]
     assert record.status == "success"
-    assert record.adapter_type == "JSONAdapter"
+    assert record.adapter_type == "json"
     assert record.source_id == "persist-json-source"
     assert record.correlation_id == "corr-persist-success"
     assert record.validation_summary is not None
@@ -237,7 +237,7 @@ async def test_error_persists_ingestion_record(
         headers={"X-API-Key": "valid-key"},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 400
     body = response.json()
     assert body["status"] == "error"
 

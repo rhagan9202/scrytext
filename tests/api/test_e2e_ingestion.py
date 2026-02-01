@@ -113,7 +113,7 @@ async def test_json_ingestion_success(
 
             payload = data["payload"]
             assert payload["metadata"]["source_id"] == "e2e-json-test"
-            assert payload["metadata"]["adapter_type"] == "JSONAdapter"
+            assert payload["metadata"]["adapter_type"] == "json"
             assert payload["metadata"]["correlation_id"] == "e2e-test-correlation-123"
 
             assert payload["validation"]["is_valid"] is True
@@ -125,7 +125,7 @@ async def test_csv_ingestion_success(
     api_key_headers: dict[str, str],
     sample_csv_request: dict[str, Any],
 ) -> None:
-    """POST /api/v1/ingest with CSV adapter should return a 500 for serialization."""
+    """POST /api/v1/ingest with CSV adapter should process data successfully."""
     with patch("scry_ingestor.api.routes.ingestion.persist_ingestion_record"):
         with patch("scry_ingestor.api.routes.ingestion.get_ingestion_publisher"):
             response = await client.post(
@@ -134,7 +134,13 @@ async def test_csv_ingestion_success(
                 headers=api_key_headers,
             )
 
-            assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
+            assert response.status_code == status.HTTP_200_OK
+            data = response.json()
+            assert data["status"] == "success"
+            payload = data["payload"]
+            assert payload["metadata"]["adapter_type"] == "csv"
+            assert payload["validation"]["metrics"]["row_count"] == 3
+            assert payload["validation"]["metrics"]["column_count"] == 3
 
 
 async def test_ingestion_with_invalid_adapter(
@@ -186,7 +192,7 @@ async def test_ingestion_with_malformed_json(
                 headers=api_key_headers,
             )
 
-            assert response.status_code == status.HTTP_200_OK
+            assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
             data = response.json()
             assert data["status"] == "error"
             assert data["payload"] is None
@@ -255,7 +261,7 @@ async def test_ingestion_persists_to_database(
             assert persist_mock.called
             record = persist_mock.call_args[0][0]
             assert record.source_id == "e2e-json-test"
-            assert record.adapter_type == "JSONAdapter"
+            assert record.adapter_type == "json"
 
 
 async def test_ingestion_records_metrics(
@@ -278,7 +284,7 @@ async def test_ingestion_records_metrics(
                 assert response.status_code == status.HTTP_200_OK
                 assert metrics_mock.called
                 call_kwargs = metrics_mock.call_args[1]
-                assert call_kwargs["adapter"] == "JSONAdapter"
+                assert call_kwargs["adapter"] == "json"
                 assert call_kwargs["status"] == "success"
 
 

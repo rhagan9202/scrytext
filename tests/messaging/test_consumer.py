@@ -64,7 +64,7 @@ def test_poll_returns_event(monkeypatch: pytest.MonkeyPatch) -> None:
     def deserializer(value: bytes | None, context: Any) -> dict[str, Any]:
         captured["value"] = value
         captured["context"] = context
-        return {"adapter": "JSONAdapter"}
+        return {"adapter": "json"}
 
     consumer = IngestionEventConsumer(
         topic="test-topic",
@@ -75,7 +75,7 @@ def test_poll_returns_event(monkeypatch: pytest.MonkeyPatch) -> None:
 
     event = consumer.poll(timeout=0.5)
     assert event is not None
-    assert event.record == {"adapter": "JSONAdapter"}
+    assert event.record == {"adapter": "json"}
     assert fake_consumer.subscribed == ["test-topic"]
     assert captured["value"] == b"encoded"
 

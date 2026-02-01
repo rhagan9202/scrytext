@@ -120,7 +120,7 @@ async def test_json_adapter_task_success(
 
             payload_dict = result_data["payload"]
             assert payload_dict["metadata"]["source_id"] == "test-json-task"
-            assert payload_dict["metadata"]["adapter_type"] == "JSONAdapter"
+            assert payload_dict["metadata"]["adapter_type"] == "json"
             assert payload_dict["metadata"]["correlation_id"] == "celery-test-123"
             assert payload_dict["validation"]["is_valid"] is True
 
@@ -145,7 +145,7 @@ async def test_csv_adapter_task_success(
             result_data = result.result
             payload_dict = result_data["payload"]
 
-            assert payload_dict["metadata"]["adapter_type"] == "CSVAdapter"
+            assert payload_dict["metadata"]["adapter_type"] == "csv"
             assert payload_dict["validation"]["metrics"]["row_count"] == 2
             assert payload_dict["validation"]["metrics"]["column_count"] == 2
 
@@ -179,11 +179,8 @@ async def test_task_with_collection_error_handles_failure(
                 }
             }
 
-            result = task.apply_async(kwargs=invalid_payload)
-
-            # Task should fail with TaskExecutionError
-            assert result.state == "FAILURE"
-            assert isinstance(result.info, TaskExecutionError)
+            with pytest.raises(TaskExecutionError):
+                task.apply_async(kwargs=invalid_payload)
 
 
 @pytest.mark.asyncio
@@ -282,7 +279,7 @@ async def test_task_records_metrics(
                 # Verify metrics were recorded
                 assert metrics_mock.called
                 call_kwargs = metrics_mock.call_args[1]
-                assert call_kwargs["adapter"] == "JSONAdapter"
+                assert call_kwargs["adapter"] == "json"
                 assert call_kwargs["status"] == "success"
 
 

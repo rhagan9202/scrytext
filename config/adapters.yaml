@@ -5,25 +5,23 @@
 examples:
   # JSON from file
   json_file:
-    type: "json"
+    adapter_type: "json"
     source_id: "example-json-file"
     source_type: "file"
     path: "/data/sample.json"  # Runtime path
     use_cloud_processing: false
     
-  # JSON from API
-  json_api:
-    type: "json"
-    source_id: "example-api"
-    source_type: "url"
-    url: "https://api.example.com/data"  # Runtime URL
-    use_cloud_processing: true
-    headers:
-      Authorization: "Bearer ${API_TOKEN}"
+  # JSON from inline payload
+  json_inline:
+    adapter_type: "json"
+    source_id: "example-json-inline"
+    source_type: "string"
+    data: '{"items":[{"id":1,"name":"example"}]}'
+    use_cloud_processing: false
 
   # CSV from file
   csv_file:
-    type: "csv"
+    adapter_type: "csv"
     source_id: "example-csv-file"
     source_type: "file"
     path: "/data/sample.csv"  # Runtime path
@@ -34,7 +32,7 @@ examples:
 
   # Excel from file
   excel_file:
-    type: "excel"
+    adapter_type: "excel"
     source_id: "example-excel-file"
     source_type: "file"
     path: "/data/sample.xlsx"  # Runtime path
@@ -46,7 +44,7 @@ examples:
 
   # REST API request
   rest_api:
-    type: "rest"
+    adapter_type: "rest"
     source_id: "example-rest-api"
     endpoint: "https://api.example.com/v1/resources"
     method: "GET"
@@ -65,7 +63,7 @@ examples:
 
   # Web crawl using BeautifulSoup
   soup_crawl:
-    type: "soup"
+    adapter_type: "soup"
     source_id: "example-web-crawl"
     url: "https://example.com/articles"
     validation:

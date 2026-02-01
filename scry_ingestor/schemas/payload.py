@@ -1,7 +1,7 @@
 """Pydantic schemas for ingestion payloads and validation results."""
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class ValidationResult(BaseModel):
@@ -35,6 +35,23 @@ class IngestionPayload(BaseModel):
     data: Any = Field(..., description="Processed data (text, JSON, or DataFrame)")
     metadata: IngestionMetadata = Field(..., description="Ingestion metadata")
     validation: ValidationResult = Field(..., description="Validation results")
+
+    @field_serializer("data", when_used="json")
+    def _serialize_data(self, value: Any) -> Any:
+        """Normalize known non-JSON types for API responses."""
+
+        try:
+            import pandas as pd  # type: ignore
+        except Exception:
+            pd = None  # type: ignore
+
+        if pd is not None:
+            if isinstance(value, pd.DataFrame):
+                return value.to_dict(orient="records")
+            if isinstance(value, pd.Series):
+                return value.to_list()
+
+        return value
 
 
 class IngestionRequest(BaseModel):

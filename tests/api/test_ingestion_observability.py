@@ -55,7 +55,7 @@ async def test_successful_ingestion_publishes_event_and_updates_metrics(
 
     success_before = _metric_value(
         "ingestion_attempts_total",
-        {"adapter": "JSONAdapter", "status": "success"},
+        {"adapter": "json", "status": "success"},
     )
     duration_before = _metric_value("processing_duration_seconds_count")
 
@@ -83,7 +83,7 @@ async def test_successful_ingestion_publishes_event_and_updates_metrics(
 
     success_after = _metric_value(
         "ingestion_attempts_total",
-        {"adapter": "JSONAdapter", "status": "success"},
+        {"adapter": "json", "status": "success"},
     )
     duration_after = _metric_value("processing_duration_seconds_count")
 
@@ -92,7 +92,7 @@ async def test_successful_ingestion_publishes_event_and_updates_metrics(
 
     assert len(publisher.published) == 1
     published_payload = publisher.published[0]
-    assert published_payload.metadata.adapter_type == "JSONAdapter"
+    assert published_payload.metadata.adapter_type == "json"
     assert published_payload.metadata.correlation_id == "corr-123"
 
 

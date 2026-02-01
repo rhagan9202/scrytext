@@ -467,6 +467,12 @@ def ensure_runtime_configuration(settings: GlobalSettings | None = None) -> Glob
             f"{joined}. Configure them via configuration templates, Secrets Manager, or .env files."
         )
 
+    if service_config.messaging.kafka.require_schema_registry:
+        if not settings.kafka_schema_registry_url:
+            raise ConfigurationError(
+                "Kafka schema registry is required but SCRY_KAFKA_SCHEMA_REGISTRY_URL is unset."
+            )
+
     return settings
 
 
