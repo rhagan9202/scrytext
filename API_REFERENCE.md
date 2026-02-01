@@ -93,7 +93,7 @@ Response example (success):
 }
 ```
 
-Error responses return `status: "error"` plus appropriate `message` and `error_details`. HTTP 404 is used when an adapter is not registered. HTTP 401/403 indicate authentication failures.
+Error responses return `status: "error"` plus appropriate `message` and `error_details`. Common HTTP codes: 400 for validation failures, 401/403 for authentication failures, 404 when an adapter is not registered, and 500 for unexpected server errors.
 
 #### `GET /api/v1/ingest/adapters`
 
@@ -101,7 +101,7 @@ Lists all registered adapter identifiers:
 
 ```json
 {
-  "adapters": ["pdf", "json", "csv", "rest", "beautifulsoup", "word"]
+  "adapters": ["json", "csv", "excel", "word", "pdf", "rest", "soup", "beautifulsoup"]
 }
 ```
 

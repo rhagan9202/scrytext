@@ -5,7 +5,7 @@ Successfully implemented an **unstructured text adapter** for Microsoft Word doc
 
 ## Implementation Date
 October 4, 2025 (Initial implementation)  
-Revised: [Current Date] (Updated to .docx-only support)
+Revised: .docx-only support (see `WORD_ADAPTER_DOC_ONLY_REVISION.md`)
 
 ## Adapter Details
 
@@ -100,7 +100,8 @@ config = {
 ## Test Suite
 
 ### Test Coverage
-- **15 tests** passing with **89% coverage**
+- **21 tests** passing
+- Coverage tracked in CI via `pytest --cov`
 - Live fixture: `tests/fixtures/sample.docx` (also sample.doc for rejection testing)
 - Fixture includes: 5 paragraphs, metadata, and a 3x3 table
 
@@ -133,7 +134,7 @@ register_adapter("word", WordAdapter)
 ```python
 from scry_ingestor.adapters import list_adapters
 print(list_adapters())
-# Output: ['json', 'csv', 'excel', 'word']
+# Output: ['json', 'csv', 'excel', 'word', 'pdf', 'rest', 'soup', 'beautifulsoup']
 ```
 
 ## Usage Examples

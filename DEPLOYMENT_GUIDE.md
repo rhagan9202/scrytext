@@ -21,10 +21,9 @@ This guide walks through deploying Scry_Ingestor in common environments. Choose 
 
 Create a `.env` file based on `.env.example` and ensure the following values are set:
 
-- `SCRY_API_KEYS` (JSON array of API keys)
+- `SCRY_API_KEYS` (comma-separated or JSON array of API keys)
 - `SCRY_DATABASE_URL` (PostgreSQL, MySQL, or SQLite connection string)
-- `SCRY_BROKER_URL` (Message broker for Celery, e.g., `redis://localhost:6379/0`)
-- `SCRY_RESULT_BACKEND` (Optional Celery result backend)
+- `SCRY_REDIS_URL` (Redis URL for Celery broker/result backend, e.g., `redis://localhost:6379/0`)
 
 ## 2. Docker
 

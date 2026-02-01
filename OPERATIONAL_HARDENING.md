@@ -329,14 +329,14 @@ spec:
         - containerPort: 8000
           name: http
         env:
-        - name: ENVIRONMENT
+        - name: SCRY_ENVIRONMENT
           value: "production"
-        - name: DATABASE_URL
+        - name: SCRY_DATABASE_URL
           valueFrom:
             secretKeyRef:
               name: scry-secrets
               key: database-url
-        - name: REDIS_URL
+        - name: SCRY_REDIS_URL
           valueFrom:
             secretKeyRef:
               name: scry-secrets
@@ -505,8 +505,8 @@ All operational events are logged with structured context:
 ### Service Won't Start
 
 **Check**:
-1. Database connectivity: `psql $DATABASE_URL`
-2. Redis connectivity: `redis-cli -u $REDIS_URL ping`
+1. Database connectivity: `psql $SCRY_DATABASE_URL`
+2. Redis connectivity: `redis-cli -u $SCRY_REDIS_URL ping`
 3. Configuration syntax: `poetry run python -c "from scry_ingestor.utils.config import get_settings; get_settings()"`
 
 ### Health Checks Failing

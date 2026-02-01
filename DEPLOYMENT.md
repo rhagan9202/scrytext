@@ -434,7 +434,7 @@ kubectl logs -n scry-staging <pod-name> --previous
 ```bash
 # Test database connectivity from pod
 kubectl exec -it -n scry-staging <pod-name> -- \
-  psql $DATABASE_URL -c "SELECT 1"
+  psql $SCRY_DATABASE_URL -c "SELECT 1"
 
 # Check secret exists
 kubectl get secret scry-staging-postgresql -n scry-staging

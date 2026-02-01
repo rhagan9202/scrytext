@@ -4,7 +4,7 @@
 Reverted WordAdapter to support `.docx` files only, removing experimental `.doc` support. This revision provides a cleaner, more maintainable implementation with clear user guidance for handling legacy formats.
 
 ## Revision Date
-[Current Date]
+2026-02-01
 
 ## Changes Made
 
@@ -57,7 +57,7 @@ poetry remove docx2txt
 - **Updated**: `test_unsupported_format_error_message` - Verifies clear error with conversion guidance
 - **Added**: `test_doc_file_rejected` - Specifically tests .doc rejection with helpful message
 
-**Test Results**: 15 tests passing, 89% coverage (up from 13 tests, 88% coverage)
+**Test Results**: 21 tests passing
 
 ### 5. Documentation Changes
 
@@ -70,13 +70,13 @@ poetry remove docx2txt
 - **Added**: "Supported Format" section explaining .docx-only
 - **Added**: "Why .docx-only?" section with technical rationale
 - **Added**: "Converting .doc files" section with detailed instructions
-- **Updated**: Test count (15 tests, 89% coverage)
+- **Updated**: Test count (21 tests)
 - **Added**: Two new test descriptions
 
 #### `ADAPTERS_IMPLEMENTATION.md`
 - **Updated**: Word Adapter entry to specify ".docx (Office Open XML) - Legacy .doc files NOT supported"
 - **Added**: "Conversion Guidance" feature description
-- **Updated**: Test coverage (15 tests, 89%)
+- **Updated**: Test count (21 tests)
 - **Added**: Dependencies section note about docx2txt removal
 
 ## Technical Investigation
@@ -144,19 +144,10 @@ payload = await adapter.process()
 
 ## Verification
 
-### All Tests Passing
+### Verification
 ```bash
-$ poetry run pytest tests/adapters/test_word_adapter.py -v
-=============================================== 15 passed in 0.72s ===============================================
-
-$ poetry run pytest --cov=scry_ingestor
-=============================================== 43 passed in 0.95s ===============================================
-```
-
-### Coverage Report
-```
-scry_ingestor/adapters/word_adapter.py       81      9    89%
-TOTAL                                       351     88    75%
+poetry run pytest tests/adapters/test_word_adapter.py -v
+poetry run pytest --cov=scry_ingestor
 ```
 
 ### Dependency Cleanup

@@ -301,8 +301,7 @@ tests/test_settings.py::test_ensure_runtime_configuration       PASSED
 #### Environment Variables
 - [ ] `SCRY_API_KEYS` - JSON array of API keys
 - [ ] `SCRY_DATABASE_URL` - PostgreSQL connection string
-- [ ] `SCRY_BROKER_URL` - Redis/Kafka broker URL
-- [ ] `SCRY_RESULT_BACKEND` - Celery result backend URL
+- [ ] `SCRY_REDIS_URL` - Redis URL for Celery broker/result backend
 - [ ] `SCRY_ENVIRONMENT` - Environment name (staging/production)
 - [ ] `SCRY_LOG_LEVEL` - Logging level (INFO/DEBUG)
 

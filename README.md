@@ -21,7 +21,6 @@
 
 - [API Reference](./API_REFERENCE.md) – Endpoint catalog, authentication, and example payloads.
 - [Deployment Guide](./DEPLOYMENT.md) – Step-by-step instructions for Kubernetes, AWS, and container deployments.
-- [**Run-Up Tasks**](./RUNUP_TASKS_COMPLETE.md) – ✅ Pre-deployment validation report (all checks passed).
 - [Performance Characteristics](./PERFORMANCE.md) – Throughput guidance, scaling strategies, and tuning tips.
 - [Operational Hardening](./OPERATIONAL_HARDENING.md) – Health checks, graceful shutdown, configuration reload, Kubernetes integration.
 - [Monitoring Guide](./MONITORING.md) – Prometheus metrics, Grafana dashboards, and observability.
@@ -494,7 +493,7 @@ for page in payload.data["pages"]:
 | `401 Unauthorized` from `/api/v1/ingest` | Missing `X-API-Key` header or key not configured | Add header with a value present in `SCRY_API_KEYS`. Reload app after changing keys. |
 | `SCRY_DATABASE_URL is required` during startup | Database URL not set | Export `SCRY_DATABASE_URL` or provide it in `.env` before launching the API. |
 | `AdapterNotFoundError` in responses | Adapter name typo or adapter not registered | Run `GET /api/v1/ingest/adapters` to list supported adapters and update request payload. |
-| Celery worker exits with broker errors | Incorrect `SCRY_BROKER_URL` | Verify broker is reachable; regenerate connection string (e.g., `redis://host:6379/0`). |
+| Celery worker exits with broker errors | Incorrect `SCRY_REDIS_URL` | Verify broker is reachable; regenerate connection string (e.g., `redis://host:6379/0`). |
 | Large PDF ingestions timeout | `max_bytes`/`max_text_chars_per_page` not tuned | Increase limits or enable streaming options in the adapter config. |
 | Prometheus metrics missing | Metrics endpoint not scraped | Confirm `/metrics` is exposed and Prometheus scrape config targets the service. |
 
@@ -702,10 +701,12 @@ pip install scry-ingestor
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `SCRY_ENVIRONMENT` | Active config profile | `development` |
 | `SCRY_LOG_LEVEL` | Logging level | `INFO` |
 | `SCRY_AWS__REGION` | AWS region | `us-east-1` |
-| `CELERY_BROKER_URL` | Celery broker URL | `redis://localhost:6379/0` |
-| `CELERY_RESULT_BACKEND` | Celery result backend | `redis://localhost:6379/0` |
+| `SCRY_DATABASE_URL` | Database connection string | `required` |
+| `SCRY_REDIS_URL` | Redis URL (Celery broker/result backend) | `redis://localhost:6379/0` |
+| `SCRY_API_KEYS` | Accepted API keys | `required` |
 
 ## Contributing
 
@@ -713,8 +714,8 @@ See [.github/copilot-instructions.md](.github/copilot-instructions.md) for devel
 
 ## License
 
-[Add your license here]
+See [LICENSE](./LICENSE).
 
 ## Support
 
-[Add contact/support information]
+Open an issue in this repository with logs and correlation IDs.
