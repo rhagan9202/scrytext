@@ -87,6 +87,7 @@ def _prepare_source_config(
     if correlation_id and "correlation_id" not in normalized_config:
         normalized_config["correlation_id"] = correlation_id
 
+    normalized_config.setdefault("adapter_type", adapter_name)
     normalized_config.setdefault("source_id", f"{adapter_name}-source")
 
     return normalized_config, correlation_id

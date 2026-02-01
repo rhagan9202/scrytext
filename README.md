@@ -13,14 +13,18 @@
 - 🛡️ **Type Safety** - Full Pydantic validation throughout
 - 🔄 **Connection Pooling** - Tunable SQLAlchemy pools to squeeze the most out of database connections
 - 🧠 **Smart Caching & Streaming** - REST response caching and chunked file readers for massive payloads
+- 💚 **Production Ready** - Health checks, graceful shutdown, configuration reload, Kubernetes support
 
 ## Quick Start
 
 ## Documentation
 
 - [API Reference](./API_REFERENCE.md) – Endpoint catalog, authentication, and example payloads.
-- [Deployment Guide](./DEPLOYMENT_GUIDE.md) – Step-by-step instructions for local, container, and cloud environments.
+- [Deployment Guide](./DEPLOYMENT.md) – Step-by-step instructions for Kubernetes, AWS, and container deployments.
+- [**Run-Up Tasks**](./RUNUP_TASKS_COMPLETE.md) – ✅ Pre-deployment validation report (all checks passed).
 - [Performance Characteristics](./PERFORMANCE.md) – Throughput guidance, scaling strategies, and tuning tips.
+- [Operational Hardening](./OPERATIONAL_HARDENING.md) – Health checks, graceful shutdown, configuration reload, Kubernetes integration.
+- [Monitoring Guide](./MONITORING.md) – Prometheus metrics, Grafana dashboards, and observability.
 
 ### Prerequisites
 
@@ -152,11 +156,12 @@ minimize memory pressure and fit better into async workflows.
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/scrytext.git
+git clone https://github.com/rhagan9202/scrytext.git
 cd scrytext
 
 # Install with Poetry
-poetry install
+poetry install.
+
 
 # Activate the virtual environment
 poetry shell

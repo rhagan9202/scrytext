@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 from scry_ingestor.api.main import app
 from scry_ingestor.models.base import reset_engine, session_scope
 from scry_ingestor.models.ingestion_record import IngestionRecord
 from scry_ingestor.utils.config import get_settings
+
+pytestmark = pytest.mark.asyncio
 
 
 class StubPublisher:
@@ -26,14 +28,13 @@ class StubPublisher:
 
 
 @pytest.fixture(name="client")
-def client_fixture(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    """Provide a FastAPI client with API keys configured."""
-
+async def client_fixture(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
+    """Provide an AsyncClient with API keys configured."""
     monkeypatch.setenv("SCRY_API_KEYS", '["valid-key"]')
     get_settings.cache_clear()
 
-    with TestClient(app) as test_client:
-        yield test_client
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
 
     get_settings.cache_clear()
 
@@ -50,7 +51,6 @@ def _patch_publisher(monkeypatch: pytest.MonkeyPatch) -> StubPublisher:
 @pytest.fixture
 def configured_db(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory):
     """Configure an isolated SQLite database for API persistence tests."""
-
     db_path = tmp_path_factory.mktemp("api-db") / "ingestion.sqlite"
     monkeypatch.setenv("SCRY_DATABASE_URL", f"sqlite:///{db_path}")
     get_settings.cache_clear()
@@ -61,11 +61,10 @@ def configured_db(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.Temp
     get_settings.cache_clear()
 
 
-def test_success_log_includes_validation_summary(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+async def test_success_log_includes_validation_summary(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Successful ingestion should emit a log with correlation ID and validation summary."""
-
     _patch_publisher(monkeypatch)
 
     payload = {
@@ -80,7 +79,7 @@ def test_success_log_includes_validation_summary(
     }
 
     with caplog.at_level(logging.INFO):
-        response = client.post(
+        response = await client.post(
             "/api/v1/ingest",
             json=payload,
             headers={"X-API-Key": "valid-key"},
@@ -102,11 +101,10 @@ def test_success_log_includes_validation_summary(
     assert summary["metrics"]["valid_json"] is True
 
 
-def test_error_log_includes_validation_summary(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+async def test_error_log_includes_validation_summary(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Failed ingestion should log correlation ID and validation summary placeholder."""
-
     _patch_publisher(monkeypatch)
 
     payload = {
@@ -121,7 +119,7 @@ def test_error_log_includes_validation_summary(
     }
 
     with caplog.at_level(logging.ERROR):
-        response = client.post(
+        response = await client.post(
             "/api/v1/ingest",
             json=payload,
             headers={"X-API-Key": "valid-key"},
@@ -146,11 +144,10 @@ def test_error_log_includes_validation_summary(
     assert "does-not-exist.json" in summary["errors"][0]
 
 
-def test_missing_adapter_logs_correlation_id(
-    client: TestClient, caplog: pytest.LogCaptureFixture
+async def test_missing_adapter_logs_correlation_id(
+    client: AsyncClient, caplog: pytest.LogCaptureFixture
 ) -> None:
     """Adapter lookups that fail should log correlation and adapter fields."""
-
     payload = {
         "adapter_type": "missing-adapter",
         "source_config": {
@@ -160,7 +157,7 @@ def test_missing_adapter_logs_correlation_id(
     }
 
     with caplog.at_level(logging.ERROR):
-        response = client.post(
+        response = await client.post(
             "/api/v1/ingest",
             json=payload,
             headers={"X-API-Key": "valid-key"},
@@ -177,11 +174,10 @@ def test_missing_adapter_logs_correlation_id(
     assert getattr(record, "status", None) == "error"
 
 
-def test_success_persists_ingestion_record(
-    configured_db: None, client: TestClient, monkeypatch: pytest.MonkeyPatch
+async def test_success_persists_ingestion_record(
+    configured_db: None, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Successful ingestions should be stored in the ingestion records table."""
-
     _patch_publisher(monkeypatch)
 
     payload = {
@@ -195,7 +191,7 @@ def test_success_persists_ingestion_record(
         "correlation_id": "corr-persist-success",
     }
 
-    response = client.post(
+    response = await client.post(
         "/api/v1/ingest",
         json=payload,
         headers={"X-API-Key": "valid-key"},
@@ -218,11 +214,10 @@ def test_success_persists_ingestion_record(
     assert record.validation_summary["is_valid"] is True
 
 
-def test_error_persists_ingestion_record(
-    configured_db: None, client: TestClient, monkeypatch: pytest.MonkeyPatch
+async def test_error_persists_ingestion_record(
+    configured_db: None, client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Failed ingestions should also be persisted with error details."""
-
     _patch_publisher(monkeypatch)
 
     payload = {
@@ -236,7 +231,7 @@ def test_error_persists_ingestion_record(
         "correlation_id": "corr-persist-error",
     }
 
-    response = client.post(
+    response = await client.post(
         "/api/v1/ingest",
         json=payload,
         headers={"X-API-Key": "valid-key"},

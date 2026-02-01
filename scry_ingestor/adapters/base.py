@@ -1,6 +1,7 @@
 """Base adapter abstract class for all data source adapters."""
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -11,6 +12,9 @@ from ..schemas.payload import IngestionMetadata, IngestionPayload, ValidationRes
 from ..utils.logging import setup_logger
 
 logger = setup_logger(__name__, context={"adapter_type": "BaseAdapter"})
+
+_THREAD_POOL = ThreadPoolExecutor(thread_name_prefix="scry-ingestor-adapter")
+_THREAD_POLL_INTERVAL = 0.01
 
 
 T = TypeVar("T")
@@ -34,6 +38,7 @@ class BaseAdapter(ABC):
         self.config = config
         self.source_id = config.get("source_id", "unknown")
         self.use_cloud_processing = config.get("use_cloud_processing", False)
+        self.adapter_type = config.get("adapter_type") or self.__class__.__name__
 
     async def _run_in_thread(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         """
@@ -48,7 +53,16 @@ class BaseAdapter(ABC):
             Result of the callable
         """
 
-        return await asyncio.to_thread(func, *args, **kwargs)
+        future = _THREAD_POOL.submit(func, *args, **kwargs)
+        try:
+            # Avoid asyncio.wrap_future/run_in_executor due to thread completion signaling issues
+            # in some runtime environments (polling keeps the event loop responsive).
+            while not future.done():
+                await asyncio.sleep(_THREAD_POLL_INTERVAL)
+            return future.result()
+        except asyncio.CancelledError:
+            future.cancel()
+            raise
 
     @abstractmethod
     async def collect(self) -> Any:
@@ -122,7 +136,7 @@ class BaseAdapter(ABC):
 
             metadata = IngestionMetadata(
                 source_id=self.source_id,
-                adapter_type=self.__class__.__name__,
+                adapter_type=self.adapter_type,
                 timestamp=start_time.isoformat(),
                 processing_duration_ms=duration_ms,
                 processing_mode="cloud" if self.use_cloud_processing else "local",
@@ -142,7 +156,7 @@ class BaseAdapter(ABC):
                         exc_info=True,
                         extra={
                             "source_id": self.source_id,
-                            "adapter_type": self.__class__.__name__,
+                            "adapter_type": self.adapter_type,
                             "correlation_id": self.config.get("correlation_id", "-"),
                             "status": "warning",
                         },

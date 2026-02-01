@@ -1,0 +1,129 @@
+# Staging environment overrides
+# Reduced resources for cost optimization
+
+image:
+  tag: develop-latest
+  pullPolicy: Always
+
+api:
+  replicaCount: 1  # Reduced for staging
+  autoscaling:
+    enabled: true
+    minReplicas: 1
+    maxReplicas: 3  # Lower than production
+    targetCPUUtilizationPercentage: 80
+    targetMemoryUtilizationPercentage: 80
+  
+  resources:
+    requests:
+      cpu: 250m  # Reduced from 500m
+      memory: 512Mi  # Reduced from 1Gi
+    limits:
+      cpu: 500m  # Reduced from 1000m
+      memory: 1Gi  # Reduced from 2Gi
+
+celery:
+  workers:
+    replicaCount: 1  # Single worker for staging
+    autoscaling:
+      enabled: true
+      minReplicas: 1
+      maxReplicas: 5  # Lower than production
+    concurrency: 2  # Reduced from 4
+    
+    resources:
+      requests:
+        cpu: 500m  # Reduced from 1000m
+        memory: 1Gi  # Reduced from 2Gi
+      limits:
+        cpu: 1000m  # Reduced from 2000m
+        memory: 2Gi  # Reduced from 4Gi
+
+config:
+  environment: staging
+  logLevel: DEBUG  # More verbose logging for debugging
+  
+  rateLimit:
+    enabled: true
+    requestsPerWindow: 50  # Lower limit for testing
+    windowSeconds: 60
+
+# Staging database connection (RDS staging instance)
+postgresql:
+  external:
+    enabled: true
+    host: scry-staging.abc123.us-east-1.rds.amazonaws.com
+    port: 5432
+    database: scry_staging
+    username: scry_app
+
+# Staging Redis connection (ElastiCache staging instance)
+redis:
+  external:
+    enabled: true
+    host: scry-staging.abc123.cache.amazonaws.com
+    port: 6379
+    database: 0
+
+# Staging Kafka connection (MSK staging cluster)
+kafka:
+  external:
+    enabled: true
+    brokers:
+      - b-1-staging.scry.abc123.kafka.us-east-1.amazonaws.com:9094
+      - b-2-staging.scry.abc123.kafka.us-east-1.amazonaws.com:9094
+    topic: scry.staging.ingestion.complete
+
+# Reduced persistence for staging
+persistence:
+  logs:
+    enabled: true
+    size: 5Gi  # Reduced from 10Gi
+    storageClass: gp3
+  data:
+    enabled: true
+    size: 20Gi  # Reduced from 50Gi
+    storageClass: gp3
+
+# Ingress for staging
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/rate-limit: "50"
+  hosts:
+    - host: scry-staging.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: scry-staging-tls
+      hosts:
+        - scry-staging.example.com
+
+# Enable monitoring but with lower retention
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 60s  # Less frequent than production
+  
+# OpenTelemetry for tracing
+opentelemetry:
+  enabled: true
+  endpoint: http://otel-collector.observability.svc.cluster.local:4317
+  serviceName: scry-ingestor-staging
+
+# Secrets references (should exist in staging namespace)
+secrets:
+  database:
+    existingSecret: scry-staging-postgresql
+    passwordKey: password
+  redis:
+    existingSecret: scry-staging-redis
+    passwordKey: password
+
+# No affinity constraints for staging (can run anywhere)
+affinity: {}
+tolerations: []

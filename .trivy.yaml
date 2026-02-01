@@ -1,0 +1,73 @@
+# Trivy vulnerability scanner configuration
+# Documentation: https://aquasecurity.github.io/trivy/
+
+# Scanning options
+scan:
+  # Scan for vulnerabilities, misconfigurations, secrets, and licenses
+  security-checks:
+    - vuln
+    - config
+    - secret
+    
+  # Vulnerability severity levels to report
+  severity:
+    - CRITICAL
+    - HIGH
+    - MEDIUM
+    
+  # Exit code when vulnerabilities are found
+  exit-code: 1  # Fail CI/CD pipeline on findings
+  
+  # Ignore unfixed vulnerabilities (no patch available)
+  ignore-unfixed: false
+  
+  # Timeout for scanning
+  timeout: 10m
+
+# Vulnerability database
+db:
+  # Skip DB update (use cached DB)
+  skip-update: false
+  
+  # Download DB only once per day
+  download-db-only: false
+
+# Output configuration
+output:
+  # Output format: table, json, sarif, cyclonedx, spdx
+  format: json
+  
+  # Output file path
+  template: "@contrib/gitlab.tpl"
+
+# Dependency scan options
+dependency:
+  # Skip scanning of specific languages
+  skip-dirs:
+    - .venv
+    - node_modules
+    - vendor
+
+# Secret scanning
+secret:
+  # Enable secret scanning
+  config: .trivy/secret.yaml
+
+# License scanning
+license:
+  # Prohibited licenses that will fail the scan
+  prohibited:
+    - GPL-2.0
+    - GPL-3.0
+    - AGPL-3.0
+  
+  # License categories to scan
+  categories:
+    - forbidden
+    - restricted
+
+# Ignore specific vulnerabilities (use with caution)
+vulnerability:
+  ignore:
+    # Example: Ignore specific CVE if risk is accepted
+    # - CVE-2021-12345

@@ -2,46 +2,27 @@
 
 from __future__ import annotations
 
-from collections.abc imdef test_csv_ingestion_success(
-    test_client: TestClient,
-    api_key_headers: dict[str, str],
-    sample_csv_request: dict[str, Any],
-) -> None:
-    """POST /api/v1/ingest with CSV adapter - DataFrame serialization limitation."""
-    with patch("scry_ingestor.api.routes.ingestion.persist_ingestion_record"):
-        with patch("scry_ingestor.api.routes.ingestion.get_ingestion_publisher"):
-            # CSV adapter processes successfully but DataFrame can't serialize to JSON
-            # This is a known limitation - the adapter works, but response serialization fails
-            # The test verifies that the adapter executes correctly up to the serialization point
-            try:
-                test_client.post(
-                    "/api/v1/ingest",
-                    json=sample_csv_request,
-                    headers=api_key_headers,
-                )
-                # If we get here without exception, the test should fail
-                assert False, "Expected serialization error for DataFrame"
-            except Exception as e:
-                # Verify we got the expected serialization error
-                assert "Unable to serialize unknown type" in str(e)
-                assert "DataFrame" in str(e) typing import Any
+from collections.abc import AsyncIterator
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi import status
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 
 from scry_ingestor.api.main import app
 from scry_ingestor.utils.config import get_settings
 
+pytestmark = pytest.mark.asyncio
 
-@pytest.fixture
-def test_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    """Create a FastAPI test client with API keys configured."""
+
+@pytest.fixture(name="client")
+async def client_fixture(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
+    """Create an AsyncClient with API keys configured."""
     monkeypatch.setenv("SCRY_API_KEYS", '["test-api-key-12345"]')
     get_settings.cache_clear()
 
-    with TestClient(app) as client:
+    async with AsyncClient(app=app, base_url="http://test") as client:
         yield client
 
     get_settings.cache_clear()
@@ -83,41 +64,40 @@ def sample_csv_request() -> dict[str, Any]:
     }
 
 
-def test_api_health_check(test_client: TestClient) -> None:
+async def test_api_health_check(client: AsyncClient) -> None:
     """API should respond to health check endpoint."""
-    response = test_client.get("/health")
+    response = await client.get("/health")
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["status"] == "healthy"
 
 
-def test_list_adapters_endpoint(
-    test_client: TestClient,
+async def test_list_adapters_endpoint(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
 ) -> None:
     """GET /api/v1/ingest/adapters should list available adapters."""
-    response = test_client.get("/api/v1/ingest/adapters", headers=api_key_headers)
+    response = await client.get("/api/v1/ingest/adapters", headers=api_key_headers)
 
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert "adapters" in data
     assert isinstance(data["adapters"], list)
 
-    # Check that common adapters are present
     adapters = data["adapters"]
     assert "json" in adapters
     assert "csv" in adapters
     assert "pdf" in adapters
 
 
-def test_json_ingestion_success(
-    test_client: TestClient,
+async def test_json_ingestion_success(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
     sample_json_request: dict[str, Any],
 ) -> None:
     """POST /api/v1/ingest with JSON adapter should process data successfully."""
     with patch("scry_ingestor.api.routes.ingestion.persist_ingestion_record"):
         with patch("scry_ingestor.api.routes.ingestion.get_ingestion_publisher"):
-            response = test_client.post(
+            response = await client.post(
                 "/api/v1/ingest",
                 json=sample_json_request,
                 headers=api_key_headers,
@@ -126,45 +106,39 @@ def test_json_ingestion_success(
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
 
-            # Verify response structure
             assert data["status"] == "success"
             assert "message" in data
             assert "payload" in data
             assert data["error_details"] is None
 
-            # Verify payload content
             payload = data["payload"]
             assert payload["metadata"]["source_id"] == "e2e-json-test"
             assert payload["metadata"]["adapter_type"] == "JSONAdapter"
             assert payload["metadata"]["correlation_id"] == "e2e-test-correlation-123"
 
-            # Verify validation
             assert payload["validation"]["is_valid"] is True
             assert isinstance(payload["validation"]["metrics"], dict)
 
 
-def test_csv_ingestion_success(
-    test_client: TestClient,
+async def test_csv_ingestion_success(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
     sample_csv_request: dict[str, Any],
 ) -> None:
-    """POST /api/v1/ingest with CSV adapter - DataFrame serialization limitation."""
+    """POST /api/v1/ingest with CSV adapter should return a 500 for serialization."""
     with patch("scry_ingestor.api.routes.ingestion.persist_ingestion_record"):
         with patch("scry_ingestor.api.routes.ingestion.get_ingestion_publisher"):
-            response = test_client.post(
+            response = await client.post(
                 "/api/v1/ingest",
                 json=sample_csv_request,
                 headers=api_key_headers,
             )
 
-            # CSV adapter processes successfully but DataFrame can't serialize to JSON
-            # This is a known limitation - the adapter works, but response serialization fails
-            # In production, CSV results would be stored and accessed differently
             assert response.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
-def test_ingestion_with_invalid_adapter(
-    test_client: TestClient,
+async def test_ingestion_with_invalid_adapter(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
 ) -> None:
     """POST /api/v1/ingest with nonexistent adapter should return 404."""
@@ -177,7 +151,7 @@ def test_ingestion_with_invalid_adapter(
     }
 
     with patch("scry_ingestor.api.routes.ingestion.persist_ingestion_record"):
-        response = test_client.post(
+        response = await client.post(
             "/api/v1/ingest",
             json=invalid_request,
             headers=api_key_headers,
@@ -189,8 +163,8 @@ def test_ingestion_with_invalid_adapter(
         assert "not registered" in data["detail"].lower()
 
 
-def test_ingestion_with_malformed_json(
-    test_client: TestClient,
+async def test_ingestion_with_malformed_json(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
 ) -> None:
     """POST /api/v1/ingest with invalid JSON should return error response."""
@@ -206,13 +180,12 @@ def test_ingestion_with_malformed_json(
 
     with patch("scry_ingestor.api.routes.ingestion.persist_ingestion_record"):
         with patch("scry_ingestor.api.routes.ingestion.get_ingestion_publisher"):
-            response = test_client.post(
+            response = await client.post(
                 "/api/v1/ingest",
                 json=bad_json_request,
                 headers=api_key_headers,
             )
 
-            # Should return 200 with error status (not HTTP error)
             assert response.status_code == status.HTTP_200_OK
             data = response.json()
             assert data["status"] == "error"
@@ -220,25 +193,24 @@ def test_ingestion_with_malformed_json(
             assert data["error_details"] is not None
 
 
-def test_ingestion_without_api_key(
-    test_client: TestClient,
+async def test_ingestion_without_api_key(
+    client: AsyncClient,
     sample_json_request: dict[str, Any],
 ) -> None:
     """POST /api/v1/ingest without API key should return 401."""
-    response = test_client.post(
+    response = await client.post(
         "/api/v1/ingest",
         json=sample_json_request,
     )
 
-    # Default FastAPI behavior for missing auth
     assert response.status_code in [
         status.HTTP_401_UNAUTHORIZED,
         status.HTTP_403_FORBIDDEN,
     ]
 
 
-def test_ingestion_publishes_to_kafka(
-    test_client: TestClient,
+async def test_ingestion_publishes_to_kafka(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
     sample_json_request: dict[str, Any],
 ) -> None:
@@ -250,19 +222,18 @@ def test_ingestion_publishes_to_kafka(
             "scry_ingestor.api.routes.ingestion.get_ingestion_publisher",
             return_value=publisher_mock,
         ):
-            response = test_client.post(
+            response = await client.post(
                 "/api/v1/ingest",
                 json=sample_json_request,
                 headers=api_key_headers,
             )
 
             assert response.status_code == status.HTTP_200_OK
-            # Verify Kafka publisher was called
             assert publisher_mock.publish_success.called
 
 
-def test_ingestion_persists_to_database(
-    test_client: TestClient,
+async def test_ingestion_persists_to_database(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
     sample_json_request: dict[str, Any],
 ) -> None:
@@ -274,23 +245,21 @@ def test_ingestion_persists_to_database(
         persist_mock,
     ):
         with patch("scry_ingestor.api.routes.ingestion.get_ingestion_publisher"):
-            response = test_client.post(
+            response = await client.post(
                 "/api/v1/ingest",
                 json=sample_json_request,
                 headers=api_key_headers,
             )
 
             assert response.status_code == status.HTTP_200_OK
-            # Verify persistence was called
             assert persist_mock.called
-            # Verify the persisted record contains correct data
             record = persist_mock.call_args[0][0]
             assert record.source_id == "e2e-json-test"
             assert record.adapter_type == "JSONAdapter"
 
 
-def test_ingestion_records_metrics(
-    test_client: TestClient,
+async def test_ingestion_records_metrics(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
     sample_json_request: dict[str, Any],
 ) -> None:
@@ -300,51 +269,47 @@ def test_ingestion_records_metrics(
             with patch(
                 "scry_ingestor.api.routes.ingestion.record_ingestion_attempt"
             ) as metrics_mock:
-                response = test_client.post(
+                response = await client.post(
                     "/api/v1/ingest",
                     json=sample_json_request,
                     headers=api_key_headers,
                 )
 
                 assert response.status_code == status.HTTP_200_OK
-                # Verify metrics were recorded
                 assert metrics_mock.called
                 call_kwargs = metrics_mock.call_args[1]
                 assert call_kwargs["adapter"] == "JSONAdapter"
                 assert call_kwargs["status"] == "success"
 
 
-def test_multiple_concurrent_ingestions(
-    test_client: TestClient,
+async def test_multiple_concurrent_ingestions(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
     sample_json_request: dict[str, Any],
 ) -> None:
     """Multiple concurrent ingestion requests should be handled correctly."""
     with patch("scry_ingestor.api.routes.ingestion.persist_ingestion_record"):
         with patch("scry_ingestor.api.routes.ingestion.get_ingestion_publisher"):
-            # Send multiple JSON requests (avoid CSV due to DataFrame serialization)
             responses = []
             for _ in range(3):
-                resp = test_client.post(
+                resp = await client.post(
                     "/api/v1/ingest",
                     json=sample_json_request,
                     headers=api_key_headers,
                 )
                 responses.append(resp)
 
-            # All requests should succeed
             for response in responses:
                 assert response.status_code == status.HTTP_200_OK
                 data = response.json()
                 assert data["status"] == "success"
 
 
-def test_ingestion_with_all_adapter_types(
-    test_client: TestClient,
+async def test_ingestion_with_all_adapter_types(
+    client: AsyncClient,
     api_key_headers: dict[str, str],
 ) -> None:
     """Test ingestion with JSON adapter to ensure it's working end-to-end."""
-    # Only test JSON adapter to avoid DataFrame serialization issues
     with patch("scry_ingestor.api.routes.ingestion.persist_ingestion_record"):
         with patch("scry_ingestor.api.routes.ingestion.get_ingestion_publisher"):
             request_payload = {
@@ -357,7 +322,7 @@ def test_ingestion_with_all_adapter_types(
                 },
             }
 
-            response = test_client.post(
+            response = await client.post(
                 "/api/v1/ingest",
                 json=request_payload,
                 headers=api_key_headers,

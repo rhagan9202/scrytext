@@ -1,0 +1,17 @@
+apiVersion: v2
+name: scry-ingestor
+description: A Helm chart for Scry Ingestor data ingestion service
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - data-ingestion
+  - etl
+  - fastapi
+  - celery
+home: https://github.com/rdhagan92/scrytext
+sources:
+  - https://github.com/rdhagan92/scrytext
+maintainers:
+  - name: rdhagan92
+    email: rdhagan92@example.com

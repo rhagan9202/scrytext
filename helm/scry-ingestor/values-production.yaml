@@ -1,0 +1,201 @@
+# Production environment overrides
+# High availability and performance configuration
+
+image:
+  tag: v1.0.0  # Specific version tag
+  pullPolicy: IfNotPresent  # Cache images in production
+
+api:
+  replicaCount: 5  # High availability
+  autoscaling:
+    enabled: true
+    minReplicas: 5
+    maxReplicas: 20  # Scale higher for peak loads
+    targetCPUUtilizationPercentage: 70  # More aggressive scaling
+    targetMemoryUtilizationPercentage: 75
+  
+  resources:
+    requests:
+      cpu: 1000m  # Increased from default
+      memory: 2Gi  # Increased from default
+    limits:
+      cpu: 2000m  # Increased from default
+      memory: 4Gi  # Increased from default
+
+celery:
+  workers:
+    replicaCount: 5  # Multiple workers for HA
+    autoscaling:
+      enabled: true
+      minReplicas: 5
+      maxReplicas: 30  # Scale aggressively
+    concurrency: 8  # Increased from default
+    
+    resources:
+      requests:
+        cpu: 2000m  # Increased from default
+        memory: 4Gi  # Increased from default
+      limits:
+        cpu: 4000m  # Increased from default
+        memory: 8Gi  # Increased from default
+
+config:
+  environment: production
+  logLevel: INFO  # Less verbose for production
+  
+  rateLimit:
+    enabled: true
+    requestsPerWindow: 1000  # Higher limit for production
+    windowSeconds: 60
+
+# Production database connection (RDS production instance)
+postgresql:
+  external:
+    enabled: true
+    host: scry-prod.xyz789.us-east-1.rds.amazonaws.com
+    port: 5432
+    database: scry_production
+    username: scry_app
+
+# Production Redis connection (ElastiCache production cluster)
+redis:
+  external:
+    enabled: true
+    host: scry-prod.xyz789.cache.amazonaws.com
+    port: 6379
+    database: 0
+
+# Production Kafka connection (MSK production cluster)
+kafka:
+  external:
+    enabled: true
+    brokers:
+      - b-1-prod.scry.xyz789.kafka.us-east-1.amazonaws.com:9094
+      - b-2-prod.scry.xyz789.kafka.us-east-1.amazonaws.com:9094
+      - b-3-prod.scry.xyz789.kafka.us-east-1.amazonaws.com:9094
+    topic: scry.production.ingestion.complete
+
+# Full persistence for production
+persistence:
+  logs:
+    enabled: true
+    size: 50Gi  # Increased for production
+    storageClass: gp3
+  data:
+    enabled: true
+    size: 200Gi  # Increased for production
+    storageClass: gp3
+
+# Ingress for production
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/rate-limit: "1000"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+  hosts:
+    - host: scry.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+    - host: api.scry.example.com  # Additional production domain
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: scry-production-tls
+      hosts:
+        - scry.example.com
+        - api.scry.example.com
+
+# Full monitoring in production
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s  # More frequent scraping
+  
+# OpenTelemetry for tracing
+opentelemetry:
+  enabled: true
+  endpoint: http://otel-collector.observability.svc.cluster.local:4317
+  serviceName: scry-ingestor-production
+  samplingRate: 0.1  # Sample 10% of traces
+
+# Secrets references (should exist in production namespace)
+secrets:
+  database:
+    existingSecret: scry-production-postgresql
+    passwordKey: password
+  redis:
+    existingSecret: scry-production-redis
+    passwordKey: password
+
+# Pod disruption budget for HA
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2  # Always keep at least 2 API pods running
+
+# Spread pods across nodes and zones for HA
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+                - scry-ingestor
+            - key: app.kubernetes.io/component
+              operator: In
+              values:
+                - api
+        topologyKey: kubernetes.io/hostname
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - scry-ingestor
+          topologyKey: topology.kubernetes.io/zone
+
+# Node selectors for dedicated production nodes
+nodeSelector:
+  workload: production
+  
+tolerations:
+  - key: "production"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+
+# Network policies for security
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: ingress-nginx
+    - from:
+      - podSelector:
+          matchLabels:
+            app.kubernetes.io/name: scry-ingestor
+  egress:
+    - to:
+      - namespaceSelector:
+          matchLabels:
+            name: kube-system
+    - to:  # Allow egress to external services (RDS, Redis, Kafka)
+      ports:
+        - protocol: TCP
+          port: 5432  # PostgreSQL
+        - protocol: TCP
+          port: 6379  # Redis
+        - protocol: TCP
+          port: 9094  # Kafka

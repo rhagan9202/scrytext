@@ -4,9 +4,17 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import JSONResponse
 
 from ...adapters import get_adapter
-from ...exceptions import AdapterNotFoundError, ScryIngestorError
+from ...exceptions import (
+    AdapterNotFoundError,
+    CollectionError,
+    ConfigurationError,
+    ScryIngestorError,
+    TransformationError,
+    ValidationError,
+)
 from ...messaging.publisher import get_ingestion_publisher
 from ...models.repository import build_error_record, build_success_record, persist_ingestion_record
 from ...monitoring.metrics import record_ingestion_attempt, record_ingestion_error
@@ -16,6 +24,18 @@ from ..dependencies import require_api_key
 
 logger = setup_logger(__name__, context={"adapter_type": "IngestionAPI"})
 router = APIRouter(dependencies=[Depends(require_api_key)])
+
+
+def _status_code_for_error(exc: ScryIngestorError) -> int:
+    """Map ingestion errors to appropriate HTTP status codes."""
+
+    if isinstance(exc, ValidationError):
+        return status.HTTP_422_UNPROCESSABLE_ENTITY
+    if isinstance(exc, (ConfigurationError, CollectionError)):
+        return status.HTTP_400_BAD_REQUEST
+    if isinstance(exc, TransformationError):
+        return status.HTTP_500_INTERNAL_SERVER_ERROR
+    return status.HTTP_500_INTERNAL_SERVER_ERROR
 
 
 def _persist_success(
@@ -64,6 +84,9 @@ def _persist_error(
     ),
     response_description="Standardized ingestion payload with validation metadata.",
     responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Invalid adapter configuration or source input.",
+        },
         status.HTTP_401_UNAUTHORIZED: {
             "description": "Missing or invalid API key.",
         },
@@ -72,6 +95,9 @@ def _persist_error(
         },
         status.HTTP_404_NOT_FOUND: {
             "description": "Requested adapter is not registered.",
+        },
+        status.HTTP_422_UNPROCESSABLE_ENTITY: {
+            "description": "Adapter validation failed for the provided input.",
         },
         status.HTTP_500_INTERNAL_SERVER_ERROR: {
             "description": "Unhandled ingestion failure.",
@@ -115,7 +141,9 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
         adapter_class = get_adapter(request.adapter_type)
 
         # Create adapter instance with config
-        adapter = adapter_class(request.source_config)
+        adapter_config = dict(request.source_config)
+        adapter_config.setdefault("adapter_type", request.adapter_type)
+        adapter = adapter_class(adapter_config)
 
         # Process the data
         payload = await adapter.process()
@@ -249,7 +277,10 @@ async def ingest_data(request: IngestionRequest) -> IngestionResponse:
             error_details=response.error_details or {},
             duration_ms=0,
         )
-        return response
+        return JSONResponse(
+            status_code=_status_code_for_error(e),
+            content=response.model_dump(mode="json"),
+        )
 
 
 @router.get(

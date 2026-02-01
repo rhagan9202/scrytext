@@ -1,0 +1,95 @@
+# Grype vulnerability scanner configuration
+# Documentation: https://github.com/anchore/grype
+
+# Fail on severity level
+fail-on-severity: high
+
+# Output format options: json, table, cyclonedx, sarif, template
+output: json
+
+# Vulnerability database configuration
+db:
+  # Automatically update the vulnerability database
+  auto-update: true
+  
+  # Database cache directory
+  cache-dir: ~/.cache/grype/db
+  
+  # Max database age before requiring update (hours)
+  max-allowed-built-age: 120
+
+# Scope of the scan
+scope: all-layers
+
+# Search configuration
+search:
+  # Search configuration
+  unindexed-archives: true
+  indexed-archives: true
+
+# Ignore specific vulnerabilities or packages
+ignore:
+  # Example: Ignore vulnerabilities by ID
+  # - vulnerability: CVE-2021-12345
+  #   fix-state: wont-fix
+  
+  # Example: Ignore specific packages
+  # - package:
+  #     name: example-package
+  #     version: 1.0.0
+
+# Match configuration
+match:
+  # Match based on specific ecosystem
+  java:
+    using-cpes: true
+  
+  python:
+    using-cpes: true
+  
+  javascript:
+    using-cpes: true
+
+# Registry authentication (for private registries)
+registry:
+  # Insecure registries (for testing only)
+  insecure-skip-tls-verify: false
+  
+  # Use Docker credentials
+  insecure-use-http: false
+
+# Logging configuration
+log:
+  # Log level: error, warn, info, debug, trace
+  level: info
+  
+  # Structured logging
+  structured: false
+
+# Output templates
+output-template-file: ""
+
+# Check for application updates
+check-for-app-update: true
+
+# Only show fixed vulnerabilities
+only-fixed: false
+
+# Platform for image scanning
+platform: ""
+
+# Exclude paths from scanning
+exclude:
+  - "**/test/**"
+  - "**/tests/**"
+  - "**/.venv/**"
+  - "**/node_modules/**"
+
+# Show suppressed vulnerabilities
+show-suppressed: false
+
+# Additional configuration
+by-cve: false
+
+# Distro hint for better matching
+distro: ""

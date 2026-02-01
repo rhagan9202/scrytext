@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 
 import pytest
-from fastapi.testclient import TestClient
+from httpx import AsyncClient
 from prometheus_client import REGISTRY
 
 from scry_ingestor.api.main import app
 from scry_ingestor.utils.config import get_settings
+
+pytestmark = pytest.mark.asyncio
 
 
 class StubPublisher:
@@ -23,31 +25,28 @@ class StubPublisher:
 
 
 @pytest.fixture(name="client")
-def client_fixture(monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    """Provide a FastAPI test client with API key authentication configured."""
-
+async def client_fixture(monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
+    """Provide an AsyncClient with API key authentication configured."""
     monkeypatch.setenv("SCRY_API_KEYS", '["valid-key"]')
     get_settings.cache_clear()
 
-    with TestClient(app) as test_client:
-        yield test_client
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        yield client
 
     get_settings.cache_clear()
 
 
 def _metric_value(metric: str, labels: dict[str, str] | None = None) -> float:
     """Helper to retrieve the current value of a Prometheus metric sample."""
-
     labels = labels or {}
     value = REGISTRY.get_sample_value(metric, labels)
     return float(value) if value is not None else 0.0
 
 
-def test_successful_ingestion_publishes_event_and_updates_metrics(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+async def test_successful_ingestion_publishes_event_and_updates_metrics(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Successful ingestion should publish a Kafka event and increment metrics."""
-
     publisher = StubPublisher()
     monkeypatch.setattr(
         "scry_ingestor.api.routes.ingestion.get_ingestion_publisher",
@@ -71,7 +70,7 @@ def test_successful_ingestion_publishes_event_and_updates_metrics(
         "correlation_id": "corr-123",
     }
 
-    response = client.post(
+    response = await client.post(
         "/api/v1/ingest",
         json=payload,
         headers={"X-API-Key": "valid-key"},
@@ -97,10 +96,9 @@ def test_successful_ingestion_publishes_event_and_updates_metrics(
     assert published_payload.metadata.correlation_id == "corr-123"
 
 
-def test_metrics_endpoint_exposes_prometheus_output(client: TestClient) -> None:
+async def test_metrics_endpoint_exposes_prometheus_output(client: AsyncClient) -> None:
     """The /metrics endpoint should expose Prometheus-formatted metrics."""
-
-    response = client.get("/metrics", headers={"X-API-Key": "valid-key"})
+    response = await client.get("/metrics", headers={"X-API-Key": "valid-key"})
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain")

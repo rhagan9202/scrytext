@@ -1,0 +1,186 @@
+name: Release and Changelog
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
+      
+      - name: Get version from tag
+        id: get_version
+        run: |
+          echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+          echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      
+      - name: Generate changelog
+        id: changelog
+        uses: metcalfc/changelog-generator@v4
+        with:
+          myToken: ${{ secrets.GITHUB_TOKEN }}
+          head-ref: ${{ github.ref }}
+          base-ref: ${{ github.event.before }}
+      
+      - name: Create detailed CHANGELOG.md
+        run: |
+          cat > RELEASE_NOTES.md << 'EOF'
+          # Release ${{ steps.get_version.outputs.TAG }}
+          
+          ## What's Changed
+          
+          ${{ steps.changelog.outputs.changelog }}
+          
+          ## Installation
+          
+          ### Docker
+          ```bash
+          docker pull ghcr.io/${{ github.repository }}:${{ steps.get_version.outputs.TAG }}
+          ```
+          
+          ### Helm
+          ```bash
+          helm repo add scry-ingestor https://rdhagan92.github.io/scrytext/helm
+          helm install scry-ingestor scry-ingestor/scry-ingestor \
+            --version ${{ steps.get_version.outputs.VERSION }}
+          ```
+          
+          ### Python Package
+          ```bash
+          pip install scry-ingestor==${{ steps.get_version.outputs.VERSION }}
+          ```
+          
+          ## Checksums
+          
+          See attached artifacts for SBOM and security scan results.
+          
+          ---
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.ref_name }}
+          EOF
+      
+      - name: Update main CHANGELOG.md
+        run: |
+          # Create or update CHANGELOG.md
+          if [ ! -f CHANGELOG.md ]; then
+            cat > CHANGELOG.md << 'EOF'
+          # Changelog
+          
+          All notable changes to this project will be documented in this file.
+          
+          The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+          and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+          
+          EOF
+          fi
+          
+          # Prepend new release notes
+          cat RELEASE_NOTES.md CHANGELOG.md > CHANGELOG.md.tmp
+          mv CHANGELOG.md.tmp CHANGELOG.md
+      
+      - name: Commit CHANGELOG
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "docs: Update CHANGELOG for ${{ steps.get_version.outputs.TAG }}"
+          file_pattern: CHANGELOG.md
+          branch: main
+      
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: ${{ contains(steps.get_version.outputs.TAG, 'rc') || contains(steps.get_version.outputs.TAG, 'beta') || contains(steps.get_version.outputs.TAG, 'alpha') }}
+          generate_release_notes: true
+          files: |
+            dist/*
+            security-reports/*
+            sbom.cyclonedx.json
+
+  docker-release:
+    name: Tag Docker Images
+    runs-on: ubuntu-latest
+    needs: [release]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=stable
+      
+      - name: Build and push release image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+          target: runtime
+      
+      - name: Build and push worker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository }}-worker:${{ github.ref_name }}
+          cache-from: type=gha
+          platforms: linux/amd64,linux/arm64
+          target: celery-worker
+
+  publish-helm:
+    name: Publish Helm Chart
+    runs-on: ubuntu-latest
+    needs: [release]
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Install Helm
+        uses: azure/setup-helm@v3
+      
+      - name: Package Helm chart
+        run: |
+          helm package ./helm/scry-ingestor \
+            --version ${{ github.ref_name }} \
+            --app-version ${{ github.ref_name }}
+      
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./helm
+          destination_dir: helm

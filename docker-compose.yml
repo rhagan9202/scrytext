@@ -6,6 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runtime
     env_file:
       - .env
     ports:
@@ -68,9 +69,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: celery-worker
     env_file:
       - .env
-    command: celery -A scry_ingestor.tasks.celery_app worker --loglevel=info
     environment:
       SCRY_LOG_LEVEL: ${SCRY_LOG_LEVEL:-INFO}
       SCRY_REDIS_URL: ${SCRY_REDIS_URL:-redis://redis:6379/0}
