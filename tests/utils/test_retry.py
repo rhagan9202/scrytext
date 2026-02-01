@@ -1,16 +1,16 @@
 """Tests for retry utilities edge cases."""
 
 import logging
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
-import pytest
 import httpx
+import pytest
 
 from scry_ingestor.utils.retry import (
-    RetryConfig,
     RetryableStatusError,
-    execute_with_retry,
+    RetryConfig,
     _parse_retry_after,
+    execute_with_retry,
 )
 
 
@@ -52,7 +52,7 @@ class TestRetryConfig:
         """Test RetryConfig validation for invalid delay values."""
         with pytest.raises(ValueError):
             RetryConfig(backoff_factor=0)
-        
+
         with pytest.raises(ValueError):
             RetryConfig(max_backoff=-1)
 

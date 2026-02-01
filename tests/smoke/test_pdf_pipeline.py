@@ -7,11 +7,7 @@ Tests end-to-end ingestion flow for PDF documents.
 from __future__ import annotations
 
 import asyncio
-import sys
 from pathlib import Path
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from scry_ingestor.adapters.pdf_adapter import PDFAdapter
 from scry_ingestor.schemas.payload import IngestionPayload
@@ -185,4 +181,4 @@ async def main() -> int:
 
 if __name__ == "__main__":
     exit_code = asyncio.run(main())
-    sys.exit(exit_code)
+    raise SystemExit(exit_code)

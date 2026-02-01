@@ -6,8 +6,8 @@ import asyncio
 import signal
 import sys
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from ..utils.logging import setup_logger

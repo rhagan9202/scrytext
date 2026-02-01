@@ -76,7 +76,7 @@ class TestConfigUtils:
         for key in list(os.environ.keys()):
             if key.startswith("SCRY_"):
                 monkeypatch.delenv(key, raising=False)
-        
+
         monkeypatch.setenv("OTHER_VAR", "value")
         config = {"existing": "value"}
         result = apply_env_overrides(config, prefix="SCRY_")
@@ -88,7 +88,7 @@ class TestConfigUtils:
         for key in list(os.environ.keys()):
             if key.startswith("SCRY_"):
                 monkeypatch.delenv(key, raising=False)
-        
+
         monkeypatch.setenv("SCRY_DEBUG", "true")
         config = {}
         result = apply_env_overrides(config, prefix="SCRY_")
@@ -100,7 +100,7 @@ class TestConfigUtils:
         for key in list(os.environ.keys()):
             if key.startswith("SCRY_"):
                 monkeypatch.delenv(key, raising=False)
-        
+
         monkeypatch.setenv("SCRY_AWS__REGION", "us-west-2")
         monkeypatch.setenv("SCRY_DB__HOST", "localhost")
         config = {}
@@ -116,7 +116,7 @@ class TestConfigUtils:
         for key in list(os.environ.keys()):
             if key.startswith("SCRY_"):
                 monkeypatch.delenv(key, raising=False)
-        
+
         monkeypatch.setenv("SCRY_A__B__C__D", "deep_value")
         config = {}
         result = apply_env_overrides(config, prefix="SCRY_")
@@ -128,7 +128,7 @@ class TestConfigUtils:
         for key in list(os.environ.keys()):
             if key.startswith("SCRY_"):
                 monkeypatch.delenv(key, raising=False)
-        
+
         monkeypatch.setenv("SCRY_EXISTING", "new_value")
         config = {"existing": "old_value"}
         result = apply_env_overrides(config, prefix="SCRY_")
@@ -406,7 +406,7 @@ class TestEdgeCases:
         for key in list(os.environ.keys()):
             if key.startswith("SCRY_"):
                 monkeypatch.delenv(key, raising=False)
-        
+
         # Empty config
         result = apply_env_overrides({})
         assert result == {}

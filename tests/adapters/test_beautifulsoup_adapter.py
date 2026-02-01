@@ -279,7 +279,9 @@ async def test_collect_respects_declared_content_length_guardrail(
 
 
 @pytest.mark.asyncio
-async def test_collect_blocks_redirects_when_disallowed(soup_adapter_config: dict[str, Any]) -> None:
+async def test_collect_blocks_redirects_when_disallowed(
+  soup_adapter_config: dict[str, Any],
+) -> None:
   """Redirect responses should raise when redirects are disabled."""
 
   soup_adapter_config["allowed_hosts"] = ["example.com"]
@@ -301,7 +303,9 @@ async def test_collect_blocks_redirects_when_disallowed(soup_adapter_config: dic
 
 
 @pytest.mark.asyncio
-async def test_collect_revalidates_allowlist_after_redirect(soup_adapter_config: dict[str, Any]) -> None:
+async def test_collect_revalidates_allowlist_after_redirect(
+  soup_adapter_config: dict[str, Any],
+) -> None:
   """Allowlist enforcement should run after following redirects."""
 
   soup_adapter_config["allowed_hosts"] = ["example.com"]

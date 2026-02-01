@@ -126,7 +126,7 @@ class TestPrintSummary:
 
         # Should have called click.echo multiple times
         assert mock_echo.call_count > 0
-        
+
         # Check that the function didn't crash
         calls = [str(call) for call in mock_echo.call_args_list]
         # Just verify the function executed without errors

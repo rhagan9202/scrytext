@@ -92,7 +92,7 @@ class JSONAdapter(BaseAdapter):
             required_fields = validation_cfg.get("required_fields")
             if required_fields is not None:
                 if isinstance(parsed, dict):
-                    if isinstance(required_fields, (list, tuple, set)):
+                    if isinstance(required_fields, list | tuple | set):
                         missing_required = set(required_fields) - set(parsed.keys())
                         if missing_required:
                             errors.append(
@@ -120,7 +120,7 @@ class JSONAdapter(BaseAdapter):
             expected_schema = self.config.get("expected_schema")
             if expected_schema:
                 if isinstance(parsed, dict):
-                    if isinstance(expected_schema, (list, tuple, set)):
+                    if isinstance(expected_schema, list | tuple | set):
                         missing_keys = set(expected_schema) - set(parsed.keys())
                         if missing_keys:
                             warnings.append(f"Missing expected keys: {missing_keys}")

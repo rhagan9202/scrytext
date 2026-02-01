@@ -18,8 +18,10 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    ValidationError as PydanticValidationError,
     field_validator,
+)
+from pydantic import (
+    ValidationError as PydanticValidationError,
 )
 
 from ..exceptions import CollectionError, ConfigurationError, TransformationError, ValidationError
@@ -48,7 +50,7 @@ class RESTCacheConfig(BaseModel):
             return {"GET"}
         if isinstance(value, str):
             value = [value]
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             normalized = {str(item).upper() for item in value if str(item).strip()}
             if not normalized:
                 raise ValueError("cache.methods must declare at least one HTTP method")
@@ -62,7 +64,7 @@ class RESTCacheConfig(BaseModel):
             return []
         if isinstance(value, str):
             value = [value]
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             result: list[str] = []
             for header in value:
                 if not isinstance(header, str) or not header.strip():
@@ -346,7 +348,7 @@ class RESTAdapter(BaseAdapter):
     def _stringify_param_value(value: Any) -> str:
         """Normalize query parameter values for cache keys."""
 
-        if isinstance(value, (list, tuple, set)):
+        if isinstance(value, list | tuple | set):
             return ",".join(str(item) for item in value)
         return str(value)
 
@@ -367,7 +369,7 @@ class RESTAdapter(BaseAdapter):
         content = request_kwargs.get("content")
         if content is None:
             return None
-        if isinstance(content, (bytes, bytearray)):
+        if isinstance(content, bytes | bytearray):
             body_bytes = bytes(content)
         else:
             body_bytes = str(content).encode("utf-8")

@@ -1,9 +1,9 @@
 """Base adapter abstract class for all data source adapters."""
 
 import asyncio
-from concurrent.futures import ThreadPoolExecutor
 from abc import ABC, abstractmethod
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any, TypeVar
 

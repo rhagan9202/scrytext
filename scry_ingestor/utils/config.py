@@ -24,7 +24,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from ..exceptions import ConfigurationError
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -353,7 +352,7 @@ def _fetch_secrets_from_manager(
         secret_binary = response.get("SecretBinary")
         if secret_binary is None:
             return {}
-        if isinstance(secret_binary, (bytes, bytearray)):
+        if isinstance(secret_binary, bytes | bytearray):
             secret_string = base64.b64decode(secret_binary).decode("utf-8")
         else:  # pragma: no cover - defensive branch
             secret_string = str(secret_binary)
@@ -377,7 +376,7 @@ def _fetch_secrets_from_manager(
             continue
         if value is None:
             continue
-        if isinstance(value, (dict, list, tuple)):
+        if isinstance(value, dict | list | tuple):
             try:
                 secrets[key] = json.dumps(value)
             except TypeError:  # pragma: no cover - defensive branch for non-serializable types

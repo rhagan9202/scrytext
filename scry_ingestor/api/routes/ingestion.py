@@ -31,7 +31,7 @@ def _status_code_for_error(exc: ScryIngestorError) -> int:
 
     if isinstance(exc, ValidationError):
         return status.HTTP_422_UNPROCESSABLE_ENTITY
-    if isinstance(exc, (ConfigurationError, CollectionError)):
+    if isinstance(exc, ConfigurationError | CollectionError):
         return status.HTTP_400_BAD_REQUEST
     if isinstance(exc, TransformationError):
         return status.HTTP_500_INTERNAL_SERVER_ERROR

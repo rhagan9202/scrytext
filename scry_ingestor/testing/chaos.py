@@ -117,7 +117,7 @@ class KafkaUnavailable(ChaosScenario):
         mock_publisher = MagicMock()
         mock_publisher.publish_success.side_effect = failing_send
         mock_publisher.publish_failure.side_effect = failing_send
-        
+
         self._patch = patch(
             "scry_ingestor.messaging.publisher.get_ingestion_publisher",
             return_value=mock_publisher

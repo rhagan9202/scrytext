@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import lru_cache
 from typing import Any
-from collections.abc import Callable
 
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient
